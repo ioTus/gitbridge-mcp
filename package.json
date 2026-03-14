@@ -1,9 +1,9 @@
 {
-  "name": "claude-github-mcp",
+  "name": "gitbridge-mcp",
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
-  "description": "MCP bridge server connecting Claude Chat to GitHub via the Model Context Protocol",
+  "description": "MCP bridge server connecting AI chat clients to GitHub repositories via the Model Context Protocol",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
