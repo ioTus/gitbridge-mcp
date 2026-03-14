@@ -11,13 +11,13 @@
 
 ## What This Repo Is
 
-**claude-github-mcp** is an MCP (Model Context Protocol) bridge server that
+**gitbridge-mcp** is an MCP (Model Context Protocol) bridge server that
 connects Claude Chat (claude.ai) to GitHub repositories. You — Claude — use
 this bridge to read files, write documents, and manage issues in GitHub repos
 directly from conversations.
 
-- **Repo:** `ioTus/claude-github-mcp`
-- **Live server:** https://claude-github-mcp.replit.app
+- **Repo:** `ioTus/gitbridge-mcp`
+- **Live server:** https://gitbridge-mcp.replit.app
 - **License:** MIT, open source
 
 ---
