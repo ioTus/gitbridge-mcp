@@ -44,8 +44,8 @@ You can freely read anything in the repo at any time:
 - `read_file` — read any file
 - `list_files` — list any directory
 - `list_issues` — view issues
-- `search_files` — search code
-- `get_recent_commits` — view commit history
+- `search_files` — search code (when available)
+- `get_recent_commits` — view commit history (when available)
 
 Use these liberally to orient yourself. Read before you write. Always.
 
@@ -54,7 +54,7 @@ Use these liberally to orient yourself. Read before you write. Always.
 You can create new files of any type with explicit user approval:
 - `write_file` — create a new file
 - `push_multiple_files` — create multiple new files in one commit
-- `queue_write` / `flush_queue` — batch writes
+- `queue_write` / `flush_queue` — batch writes (when available)
 
 This includes code files, config files, documentation — anything. The
 key constraint is that the file must be **new** (not already in the repo).
@@ -90,7 +90,7 @@ those boundaries — see `AGENTS.md` for details.
 
 Deletion is destructive and irreversible through the API.
 
-- `delete_file` — remove a file from the repo
+- `delete_file` — remove a file from the repo (when available)
 
 **Rules:**
 1. State the exact file path you intend to delete
@@ -99,6 +99,9 @@ Deletion is destructive and irreversible through the API.
    (e.g., "Yes, delete `temporary.md`")
 4. A general "go ahead" is NOT sufficient for deletes — the user
    must acknowledge the specific file
+
+If `delete_file` is not yet available, provide the GitHub link for
+manual deletion instead.
 
 ### Tier 5 — Issues (standard approval)
 
@@ -280,12 +283,9 @@ Once logged, don't re-litigate.
 
 ## Available Tools
 
-*Last updated: 2026-03-13 (V2 build complete)*
+*Updated with each build.*
 
 ### Live (V2):
-
-All tools require `owner` and `repo` parameters. Write tools prefix
-responses with `✅ Writing to: {owner}/{repo}`.
 
 | Tool | Category | What it does |
 |------|----------|-------------|
@@ -302,9 +302,15 @@ responses with `✅ Writing to: {owner}/{repo}`.
 | `create_issue` | Issues | Create a new GitHub Issue |
 | `update_issue` | Issues | Update an existing Issue |
 | `list_issues` | Issues | List Issues with optional filters |
+| `read_issue` | Issues | Read full body + all comments of an Issue |
 | `add_issue_comment` | Issues | Comment on an Issue |
+| `create_repo` | Repo mgmt | Create a new GitHub repo (personal or org) |
 
-### Phase 2 stubs (registered but not yet implemented):
+All tools require `owner` and `repo` parameters except `create_repo`
+(which takes `name` and optional `org`). Write tools prefix responses
+with `✅ Writing to: {owner}/{repo}`.
+
+### Planned (Phase 2 stubs — registered but not yet implemented):
 
 | Tool | What it does |
 |------|-------------|
@@ -341,7 +347,7 @@ responses with `✅ Writing to: {owner}/{repo}`.
 
 ---
 
-*Last updated: 2026-03-13 (V2 build complete)*
+*Last updated: 2026-03-14 (added read_issue, create_repo — Issue #7, #9)*
 
 *This file is maintained collaboratively. Claude updates operating rules
 and conventions. The builder agent updates tool lists and technical
