@@ -1,4 +1,4 @@
-# claude-github-mcp
+# gitbridge-mcp
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -29,8 +29,8 @@ The server exposes a single `/mcp` endpoint that speaks the MCP protocol over St
 ### 1. Fork or clone this repo
 
 ```bash
-git clone https://github.com/ioTus/claude-github-mcp.git
-cd claude-github-mcp
+git clone https://github.com/ioTus/gitbridge-mcp.git
+cd gitbridge-mcp
 npm install
 ```
 
