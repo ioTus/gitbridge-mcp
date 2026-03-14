@@ -16,6 +16,7 @@ import { createIssueSchema, createIssue } from "./tools/create_issue.js";
 import { updateIssueSchema, updateIssue } from "./tools/update_issue.js";
 import { listIssuesSchema, listIssues } from "./tools/list_issues.js";
 import { addIssueCommentSchema, addIssueComment } from "./tools/add_issue_comment.js";
+import { readIssueSchema, readIssue } from "./tools/read_issue.js";
 import { searchFilesSchema, searchFiles } from "./tools/search_files.js";
 import { moveFileSchema, moveFile } from "./tools/move_file.js";
 import { deleteFileSchema, deleteFile } from "./tools/delete_file.js";
@@ -33,6 +34,7 @@ const allTools = [
   updateIssueSchema,
   listIssuesSchema,
   addIssueCommentSchema,
+  readIssueSchema,
   searchFilesSchema,
   moveFileSchema,
   deleteFileSchema,
@@ -51,6 +53,7 @@ const toolHandlers: Record<string, (args: any) => Promise<any>> = {
   update_issue: updateIssue,
   list_issues: listIssues,
   add_issue_comment: addIssueComment,
+  read_issue: readIssue,
   search_files: searchFiles,
   move_file: moveFile,
   delete_file: deleteFile,
@@ -107,12 +110,10 @@ function setCorsHeaders(res: Response, origin?: string): boolean {
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id");
+    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
   }
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id");
-  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
   res.setHeader("Vary", "Origin");
   return true;
 }
@@ -120,13 +121,12 @@ function setCorsHeaders(res: Response, origin?: string): boolean {
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID;
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
 
-if ((OAUTH_CLIENT_ID && !OAUTH_CLIENT_SECRET) || (!OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET)) {
-  console.error("FATAL: Only one of OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET is set. Both must be set together, or neither.");
+if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
+  console.error("FATAL: OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET are required.");
+  console.error("Both must be set to secure the MCP endpoints with OAuth 2.0 authentication.");
+  console.error("Generate them with: openssl rand -hex 16 (for ID) and openssl rand -hex 32 (for secret)");
   process.exit(1);
 }
-
-const OAUTH_ENABLED = !!(OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET);
-const AUTH_MODE: "oauth" | "open" = OAUTH_ENABLED ? "oauth" : "open";
 
 const authCodes: Map<string, {
   clientId: string;
@@ -136,15 +136,10 @@ const authCodes: Map<string, {
   codeChallengeMethod?: string;
 }> = new Map();
 
-if (AUTH_MODE === "oauth") {
-  console.log(`[${new Date().toISOString()}] [MCP] OAuth 2.0 authentication is ENABLED`);
-  console.log(`[${new Date().toISOString()}] [MCP] Authorization endpoint: /authorize`);
-  console.log(`[${new Date().toISOString()}] [MCP] Token endpoint: /oauth/token`);
-  console.log(`[${new Date().toISOString()}] [MCP] MCP endpoint: /mcp`);
-} else {
-  console.log(`[${new Date().toISOString()}] [MCP] WARNING: No authentication configured — MCP endpoints are OPEN`);
-  console.log(`[${new Date().toISOString()}] [MCP] Set OAUTH_CLIENT_ID + OAUTH_CLIENT_SECRET to enable OAuth 2.0 authentication`);
-}
+console.log(`[${new Date().toISOString()}] [MCP] OAuth 2.0 authentication is ENABLED`);
+console.log(`[${new Date().toISOString()}] [MCP] Authorization endpoint: /authorize`);
+console.log(`[${new Date().toISOString()}] [MCP] Token endpoint: /oauth/token`);
+console.log(`[${new Date().toISOString()}] [MCP] MCP endpoint: /mcp`);
 
 function base64UrlEncode(data: Buffer): string {
   return data.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -185,7 +180,6 @@ function getServerOrigin(req: Request): string {
 }
 
 function requireAuth(req: Request, res: Response): boolean {
-  if (AUTH_MODE !== "oauth") return true;
   const origin = getServerOrigin(req);
   const resourceMetadataUrl = `${origin}/.well-known/oauth-protected-resource`;
   const authHeader = req.headers.authorization;
@@ -214,10 +208,6 @@ export async function registerRoutes(
 
   const protectedResourceHandler = (req: Request, res: Response) => {
     setCorsHeaders(res, req.headers.origin);
-    if (!OAUTH_ENABLED) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
     const origin = getServerOrigin(req);
     res.json({
       resource: `${origin}/mcp`,
@@ -231,28 +221,19 @@ export async function registerRoutes(
 
   app.get("/.well-known/oauth-authorization-server", (req: Request, res: Response) => {
     setCorsHeaders(res, req.headers.origin);
-    if (!OAUTH_ENABLED) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
     const origin = getServerOrigin(req);
     res.json({
       issuer: origin,
       authorization_endpoint: `${origin}/authorize`,
       token_endpoint: `${origin}/oauth/token`,
       response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code"],
+      grant_types_supported: ["authorization_code", "client_credentials"],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["client_secret_post"],
     });
   });
 
   app.get("/authorize", (req: Request, res: Response) => {
-    if (!OAUTH_ENABLED) {
-      res.status(404).json({ error: "not_found", error_description: "OAuth is not configured on this server" });
-      return;
-    }
-
     const responseType = req.query.response_type as string;
     const clientId = req.query.client_id as string;
     const redirectUri = req.query.redirect_uri as string;
@@ -305,10 +286,6 @@ export async function registerRoutes(
 
   app.post("/oauth/token", (req: Request, res: Response) => {
     setCorsHeaders(res, req.headers.origin);
-    if (!OAUTH_ENABLED) {
-      res.status(404).json({ error: "not_found", error_description: "OAuth is not configured on this server" });
-      return;
-    }
 
     let grantType: string | undefined;
     let clientId: string | undefined;
@@ -345,7 +322,12 @@ export async function registerRoutes(
       return;
     }
 
-    if (clientSecret && clientSecret !== OAUTH_CLIENT_SECRET) {
+    if (!clientSecret) {
+      res.status(400).json({ error: "invalid_request", error_description: "client_secret is required" });
+      return;
+    }
+
+    if (clientSecret !== OAUTH_CLIENT_SECRET) {
       res.status(401).json({ error: "invalid_client", error_description: "Invalid client_secret" });
       return;
     }
@@ -395,11 +377,6 @@ export async function registerRoutes(
       }
     }
 
-    if (grantType === "client_credentials" && !clientSecret) {
-      res.status(400).json({ error: "invalid_request", error_description: "client_secret is required for client_credentials grant" });
-      return;
-    }
-
     const now = Math.floor(Date.now() / 1000);
     const expiresIn = 3600;
     const payload = { sub: clientId, iat: now, exp: now + expiresIn };
@@ -416,19 +393,33 @@ export async function registerRoutes(
     });
   });
 
-  app.get("/api/status", (_req: Request, res: Response) => {
-    res.json({
+  app.get("/api/status", (req: Request, res: Response) => {
+    const publicResponse = {
       status: "running",
       server: "claude-github-mcp",
       version: "2.0.0",
+    };
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.json(publicResponse);
+      return;
+    }
+    const token = authHeader.slice(7);
+    const payload = verifyJwt(token, OAUTH_CLIENT_SECRET!);
+    if (!payload) {
+      res.json(publicResponse);
+      return;
+    }
+
+    res.json({
+      ...publicResponse,
+      authenticated: true,
       mode: "multi-repo",
-      authEnabled: OAUTH_ENABLED,
-      authMode: AUTH_MODE,
-      oauthClientId: OAUTH_ENABLED ? OAUTH_CLIENT_ID : null,
       mcpPath: "/mcp",
       ssePath: "/sse",
-      authorizeEndpoint: OAUTH_ENABLED ? "/authorize" : null,
-      tokenEndpoint: OAUTH_ENABLED ? "/oauth/token" : null,
+      authorizeEndpoint: "/authorize",
+      tokenEndpoint: "/oauth/token",
       tools: allTools.map((t) => ({
         name: t.name,
         description: t.description,
