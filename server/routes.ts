@@ -23,6 +23,7 @@ import { deleteFileSchema, deleteFile } from "./tools/delete_file.js";
 import { queueWriteSchema, queueWrite } from "./tools/queue_write.js";
 import { flushQueueSchema, flushQueue } from "./tools/flush_queue.js";
 import { getRecentCommitsSchema, getRecentCommits } from "./tools/get_recent_commits.js";
+import { createRepoSchema, createRepo } from "./tools/create_repo.js";
 import { phase2Stubs } from "./tools/phase2_stubs.js";
 
 const allTools = [
@@ -41,6 +42,7 @@ const allTools = [
   queueWriteSchema,
   flushQueueSchema,
   getRecentCommitsSchema,
+  createRepoSchema,
   ...phase2Stubs.map((s) => s.schema),
 ];
 
@@ -60,6 +62,7 @@ const toolHandlers: Record<string, (args: any) => Promise<any>> = {
   queue_write: queueWrite,
   flush_queue: flushQueue,
   get_recent_commits: getRecentCommits,
+  create_repo: createRepo,
 };
 
 for (const stub of phase2Stubs) {
