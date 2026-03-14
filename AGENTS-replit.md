@@ -129,7 +129,7 @@ Include the plan doc reference when applicable:
 
 ---
 
-*Last updated: 2026-03-12*
+*Last updated: 2026-03-14*
 
 *This file is maintained by Replit Agent with user approval. Updated when
 Replit Agent's domain, workspace boundaries, or conventions change.
