@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,13 @@ import {
   Layers,
   Lock,
   LogOut,
+  GitFork,
+  FolderGit,
+  LayoutDashboard,
+  Wrench,
+  RefreshCw,
+  ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
 import { SiGithub } from "react-icons/si";
 import { Button } from "@/components/ui/button";
@@ -26,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface ToolInfo {
   name: string;
+  category: string;
   description: string;
   phase: number;
 }
@@ -83,19 +91,23 @@ export default function Home() {
   const [loginClientSecret, setLoginClientSecret] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
+  const isEmbedded = typeof window !== "undefined" && window.self !== window.top;
+  const [devAutoLoginAttempted, setDevAutoLoginAttempted] = useState(false);
 
   const { data, isLoading, error } = useQuery<StatusData>({
     queryKey: ["/api/status"],
     queryFn: async () => {
       const headers: Record<string, string> = {};
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      const currentToken = getStoredToken();
+      if (currentToken) {
+        headers["Authorization"] = `Bearer ${currentToken}`;
       }
       const res = await fetch("/api/status", { headers });
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
       return res.json();
     },
-    refetchInterval: 10000,
   });
 
   const isAuthenticated = data?.authenticated === true;
@@ -126,20 +138,56 @@ export default function Home() {
       const body = await res.json();
       storeToken(body.access_token, body.expires_in || 3600);
       setToken(body.access_token);
-      queryClient.refetchQueries({ queryKey: ["/api/status"] });
-      // intentionally leave loginLoading=true — the loading state persists
-      // until isAuthenticated flips and the login form unmounts
+      await queryClient.refetchQueries({ queryKey: ["/api/status"] });
+      setLoginLoading(false);
     } catch {
       setLoginError("Failed to connect to the server");
       setLoginLoading(false);
     }
   }, [loginClientId, loginClientSecret, queryClient]);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    setLogoutLoading(true);
+    setLoginLoading(false);
     clearToken();
     setToken(null);
-    queryClient.invalidateQueries({ queryKey: ["/api/status"] });
+    await queryClient.refetchQueries({ queryKey: ["/api/status"] });
+    setLogoutLoading(false);
   }, [queryClient]);
+
+  useEffect(() => {
+    if (devAutoLoginAttempted || isAuthenticated || token) return;
+    if (import.meta.env.MODE !== "development") return;
+
+    setDevAutoLoginAttempted(true);
+    fetch("/api/dev-credentials")
+      .then((res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then((creds) => {
+        if (!creds?.client_id || !creds?.client_secret) return;
+        setLoginClientId(creds.client_id);
+        setLoginClientSecret(creds.client_secret);
+        return fetch("/oauth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "client_credentials",
+            client_id: creds.client_id,
+            client_secret: creds.client_secret,
+          }),
+        });
+      })
+      .then((res) => res?.json())
+      .then((body) => {
+        if (!body?.access_token) return;
+        storeToken(body.access_token, body.expires_in || 3600);
+        setToken(body.access_token);
+        queryClient.refetchQueries({ queryKey: ["/api/status"] });
+      })
+      .catch(() => {});
+  }, [devAutoLoginAttempted, isAuthenticated, token, queryClient]);
 
   const mcpUrl = typeof window !== "undefined" && isAuthenticated
     ? `${window.location.origin}${(data as AuthenticatedStatusData).mcpPath}`
@@ -176,7 +224,7 @@ export default function Home() {
 
   if (!isAuthenticated && loginLoading && token) {
     return (
-      <div className="flex items-center justify-center h-full" data-testid="signing-in-state">
+      <div className="flex items-center justify-center min-h-screen" data-testid="signing-in-state">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <p className="text-sm text-muted-foreground">Signing in...</p>
@@ -210,6 +258,27 @@ export default function Home() {
             </p>
           </div>
 
+          {isEmbedded && (
+            <div className="flex items-start gap-3 rounded-lg border border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950/20 p-3" data-testid="banner-iframe-warning">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1.5">
+                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                  Password manager autofill is disabled in embedded previews.{" "}
+                  <strong>Open in new tab</strong> for full autofill support, or enter credentials manually below.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(window.location.href, "_blank")}
+                  data-testid="button-open-new-tab"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                  Open in new tab
+                </Button>
+              </div>
+            </div>
+          )}
+
           <Card data-testid="card-login">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
@@ -218,12 +287,14 @@ export default function Home() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleLogin} className="space-y-4" autoComplete={isEmbedded ? "off" : "on"}>
                 <div className="space-y-2">
                   <Label htmlFor="client-id">Client ID</Label>
                   <Input
                     id="client-id"
-                    type="password"
+                    type={isEmbedded ? "text" : "text"}
+                    autoComplete={isEmbedded ? "off" : "username"}
+                    {...(isEmbedded && { "data-1p-ignore": true, "data-lpignore": "true" })}
                     placeholder="Enter OAuth Client ID"
                     value={loginClientId}
                     onChange={(e) => setLoginClientId(e.target.value)}
@@ -236,6 +307,8 @@ export default function Home() {
                   <Input
                     id="client-secret"
                     type="password"
+                    autoComplete={isEmbedded ? "off" : "current-password"}
+                    {...(isEmbedded && { "data-1p-ignore": true, "data-lpignore": "true" })}
                     placeholder="Enter OAuth Client Secret"
                     value={loginClientSecret}
                     onChange={(e) => setLoginClientSecret(e.target.value)}
@@ -262,20 +335,33 @@ export default function Home() {
   }
 
   const authData = data as AuthenticatedStatusData;
-  const phase1Tools = authData.tools.filter((t) => t.phase === 1);
+  const phase1Tools = authData.tools.filter((t) => t.phase !== 2);
   const phase2Tools = authData.tools.filter((t) => t.phase === 2);
-  const fileTools = phase1Tools.filter((t) =>
-    ["read_file", "write_file", "push_multiple_files", "list_files"].includes(t.name)
-  );
-  const issueTools = phase1Tools.filter((t) =>
-    ["create_issue", "update_issue", "list_issues", "read_issue", "add_issue_comment"].includes(t.name)
-  );
-  const searchTools = phase1Tools.filter((t) =>
-    ["search_files", "get_recent_commits"].includes(t.name)
-  );
-  const advancedTools = phase1Tools.filter((t) =>
-    ["move_file", "delete_file", "queue_write", "flush_queue"].includes(t.name)
-  );
+
+  const categoryMeta: Record<string, { label: string; icon: typeof FileText }> = {
+    file: { label: "File Tools", icon: FileText },
+    issue: { label: "Issue Tools", icon: CircleDot },
+    search: { label: "Search & History", icon: Search },
+    advanced: { label: "Advanced (Move, Delete, Batch)", icon: Layers },
+    repo: { label: "Repo Management", icon: GitFork },
+    branch: { label: "Branch Management", icon: FolderGit },
+    project: { label: "Project Boards", icon: LayoutDashboard },
+  };
+  const defaultCategoryMeta = { label: "Other Tools", icon: Wrench };
+
+  const phase1ByCategory = phase1Tools.reduce<Record<string, ToolInfo[]>>((acc, tool) => {
+    const cat = tool.category || "other";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(tool);
+    return acc;
+  }, {});
+
+  const categoryOrder = ["file", "issue", "search", "advanced", "repo", "branch", "project"];
+  const sortedCategories = Object.keys(phase1ByCategory).sort((a, b) => {
+    const ia = categoryOrder.indexOf(a);
+    const ib = categoryOrder.indexOf(b);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
 
   return (
     <div className="h-full overflow-y-auto">
@@ -298,9 +384,9 @@ export default function Home() {
               {authData.mode}
             </Badge>
             <div className="flex-1" />
-            <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-logout">
+            <Button variant="ghost" size="sm" onClick={handleLogout} disabled={logoutLoading} data-testid="button-logout">
               <LogOut className="w-4 h-4 mr-1" />
-              Sign Out
+              {logoutLoading ? "Signing out..." : "Sign Out"}
             </Button>
           </div>
           <p className="text-muted-foreground">
@@ -327,19 +413,27 @@ export default function Home() {
                 <Server className="w-4 h-4" />
                 <span>Tools Registered</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-foreground">{phase1Tools.length} active</span>
-                <span className="text-muted-foreground">/</span>
-                <span className="text-muted-foreground">{phase2Tools.length} planned</span>
-              </div>
+              <span className="font-medium text-foreground">{authData.tools.length} available</span>
             </CardContent>
           </Card>
 
           <Card data-testid="card-sessions">
             <CardContent className="pt-5 pb-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <Link2 className="w-4 h-4" />
-                <span>Active Sessions</span>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Link2 className="w-4 h-4" />
+                  <span>Active Sessions</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => queryClient.refetchQueries({ queryKey: ["/api/status"] })}
+                  data-testid="button-refresh-sessions"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                  Refresh
+                </Button>
               </div>
               <span className="font-medium text-foreground" data-testid="text-sessions">
                 {authData.activeSessions}
@@ -413,97 +507,35 @@ export default function Home() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Active Tools</h2>
 
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              File Tools
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {fileTools.map((tool) => (
-                <Card key={tool.name} data-testid={`card-tool-${tool.name}`}>
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <code className="text-sm font-mono font-medium">{tool.name}</code>
-                      <Badge variant="outline" className="text-xs no-default-active-elevate">
-                        <CheckCircle2 className="w-3 h-3 mr-1 text-green-600 dark:text-green-400" />
-                        active
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{tool.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <CircleDot className="w-4 h-4" />
-              Issue Tools
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {issueTools.map((tool) => (
-                <Card key={tool.name} data-testid={`card-tool-${tool.name}`}>
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <code className="text-sm font-mono font-medium">{tool.name}</code>
-                      <Badge variant="outline" className="text-xs no-default-active-elevate">
-                        <CheckCircle2 className="w-3 h-3 mr-1 text-green-600 dark:text-green-400" />
-                        active
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{tool.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Search className="w-4 h-4" />
-              Search & History
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {searchTools.map((tool) => (
-                <Card key={tool.name} data-testid={`card-tool-${tool.name}`}>
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <code className="text-sm font-mono font-medium">{tool.name}</code>
-                      <Badge variant="outline" className="text-xs no-default-active-elevate">
-                        <CheckCircle2 className="w-3 h-3 mr-1 text-green-600 dark:text-green-400" />
-                        active
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{tool.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Layers className="w-4 h-4" />
-              Advanced (Move, Delete, Batch)
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {advancedTools.map((tool) => (
-                <Card key={tool.name} data-testid={`card-tool-${tool.name}`}>
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <code className="text-sm font-mono font-medium">{tool.name}</code>
-                      <Badge variant="outline" className="text-xs no-default-active-elevate">
-                        <CheckCircle2 className="w-3 h-3 mr-1 text-green-600 dark:text-green-400" />
-                        active
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{tool.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
+          {sortedCategories.map((cat) => {
+            const meta = categoryMeta[cat] || defaultCategoryMeta;
+            const Icon = meta.icon;
+            const tools = phase1ByCategory[cat];
+            return (
+              <div key={cat} className="space-y-3">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Icon className="w-4 h-4" />
+                  {meta.label}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {tools.map((tool) => (
+                    <Card key={tool.name} data-testid={`card-tool-${tool.name}`}>
+                      <CardContent className="pt-4 pb-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <code className="text-sm font-mono font-medium">{tool.name}</code>
+                          <Badge variant="outline" className="text-xs no-default-active-elevate">
+                            <CheckCircle2 className="w-3 h-3 mr-1 text-green-600 dark:text-green-400" />
+                            active
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{tool.description}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {phase2Tools.length > 0 && (

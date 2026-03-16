@@ -27,7 +27,8 @@ import { createRepo } from "./tools/create_repo.js";
 import { createBranch } from "./tools/create_branch.js";
 import { listBranches } from "./tools/list_branches.js";
 import { getFileDiff } from "./tools/get_file_diff.js";
-import { phase2Stubs } from "./tools/phase2_stubs.js";
+import { getProjectBoard } from "./tools/get_project_board.js";
+import { moveIssueToColumn } from "./tools/move_issue_to_column.js";
 import { allToolSchemas } from "./tools/registry.js";
 
 const allTools = allToolSchemas;
@@ -52,11 +53,9 @@ const toolHandlers: Record<string, (args: any) => Promise<any>> = {
   create_branch: createBranch,
   list_branches: listBranches,
   get_file_diff: getFileDiff,
+  get_project_board: getProjectBoard,
+  move_issue_to_column: moveIssueToColumn,
 };
-
-for (const stub of phase2Stubs) {
-  toolHandlers[stub.schema.name] = stub.handler;
-}
 
 function createMcpServer(): Server {
   const mcpServer = new Server(
@@ -391,6 +390,22 @@ export async function registerRoutes(
     });
   });
 
+  if (process.env.NODE_ENV === "development") {
+    app.get("/api/dev-credentials", (req: Request, res: Response) => {
+      const remoteIp = req.ip || req.socket.remoteAddress || "";
+      const isLocal = ["127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"].includes(remoteIp);
+      const isPrivate = /^(::ffff:)?(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(remoteIp);
+      if (!isLocal && !isPrivate) {
+        res.status(403).json({ error: "dev-credentials is only available from local/private networks" });
+        return;
+      }
+      res.json({
+        client_id: OAUTH_CLIENT_ID,
+        client_secret: OAUTH_CLIENT_SECRET,
+      });
+    });
+  }
+
   app.get("/api/status", (req: Request, res: Response) => {
     const publicResponse = {
       status: "running",
@@ -422,7 +437,7 @@ export async function registerRoutes(
         name: t.name,
         category: t.category,
         description: t.description,
-        phase: t.description.startsWith("[Phase 2]") ? 2 : 1,
+        phase: "live",
       })),
       activeSessions: Object.keys(sseTransports).length + Object.keys(streamableTransports).length,
     });

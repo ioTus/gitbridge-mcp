@@ -309,17 +309,13 @@ Once logged, don't re-litigate.
 | `create_branch` | Branch Tools | Create a new branch from an existing one |
 | `list_branches` | Branch Tools | List all branches in a GitHub repository |
 | `get_file_diff` | Search & History | Show file changes between a commit SHA and a branch head (default: main) |
+| `get_project_board` | Project Management | Read a GitHub Projects V2 board — returns columns (status values) and the issues/PRs in each column |
+| `move_issue_to_column` | Project Management | Move an issue to a target column (status) on a GitHub Projects V2 board |
 
 All tools require `owner` and `repo` parameters except `create_repo`
 (which takes `name` and optional `org`). Write tools prefix responses
-with `✅ Writing to: {owner}/{repo}`.
-
-### Planned (Phase 2 stubs — registered but not yet implemented):
-
-| Tool | What it does |
-|------|-------------|
-| `get_project_board` | Read GitHub Projects kanban board (requires GraphQL) |
-| `move_issue_to_column` | Move an issue card on the Projects board (requires GraphQL) |
+with `✅ Writing to: {owner}/{repo}`. Project tools require the PAT
+to have the `project` scope for GitHub Projects V2 access.
 <!-- TOOLS:END -->
 
 ---

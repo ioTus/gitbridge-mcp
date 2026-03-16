@@ -39,7 +39,7 @@ npm install
 1. Go to **GitHub → Settings → Developer Settings → Personal Access Tokens → Tokens (classic)**
 2. Click **Generate new token (classic)**
 3. Give it a descriptive name (e.g. `claude-mcp-bridge`)
-4. Select the **`repo`** scope (this covers file read/write, Issues, and repository metadata)
+4. Select the **`repo`** scope (file read/write, Issues, and repository metadata) and the **`project`** scope (Projects V2 board access)
 5. Click **Generate token** and copy the value — you won't see it again
 
 ### 3. Generate OAuth credentials
@@ -62,7 +62,7 @@ Create a `.env` file or set these in your hosting platform's secrets/environment
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GITHUB_PERSONAL_ACCESS_TOKEN` | **Yes** | GitHub PAT with `repo` scope |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | **Yes** | GitHub PAT with `repo` and `project` scopes |
 | `OAUTH_CLIENT_ID` | **Yes** | OAuth Client ID for authenticating MCP connections |
 | `OAUTH_CLIENT_SECRET` | **Yes** | OAuth Client Secret (used to sign/verify JWT access tokens) |
 | `ALLOWED_REPOS` | No | Comma-separated `owner/repo` pairs to restrict which repositories tools can access (e.g. `ioTus/my-repo,ioTus/other-repo`). If unset, all repos the PAT can reach are allowed. |
@@ -139,7 +139,7 @@ No secrets are embedded in URLs. All authentication happens via standard HTTP he
 Your GitHub PAT determines the **blast radius** — every repo the PAT can access is reachable through the MCP bridge. To minimize risk:
 
 - **Use fine-grained PATs** (GitHub → Settings → Developer Settings → Fine-grained tokens) scoped to specific repositories whenever possible. This limits Claude to only the repos you explicitly grant access to, even if someone obtains your OAuth credentials.
-- **Use classic PATs with `repo` scope only** if fine-grained tokens don't support your use case. Avoid granting `admin`, `delete_repo`, or other elevated scopes.
+- **Use classic PATs with `repo` + `project` scopes** if fine-grained tokens don't support your use case. Avoid granting `admin`, `delete_repo`, or other elevated scopes.
 - **Create separate PATs per use case** — e.g., one for your personal projects, another for work repos. Run separate bridge instances if needed.
 - **Rotate PATs regularly** and revoke any that are no longer in use.
 
@@ -147,7 +147,7 @@ Your GitHub PAT determines the **blast radius** — every repo the PAT can acces
 
 - The server **requires** `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` — it will not start without them
 - Set `ALLOWED_REPOS` to restrict which repositories can be accessed through the bridge (e.g. `ALLOWED_REPOS=ioTus/my-repo,ioTus/other-repo`)
-- Use a GitHub PAT with the minimum required scope (`repo`)
+- Use a GitHub PAT with the minimum required scopes (`repo` + `project`)
 - Rotate credentials periodically
 - Audit your PAT's repository access periodically at GitHub → Settings → Developer Settings → Personal Access Tokens
 
@@ -155,56 +155,63 @@ Your GitHub PAT determines the **blast radius** — every repo the PAT can acces
 
 All tools accept `owner` and `repo` as required parameters. Write tools prefix their responses with `✅ Writing to: {owner}/{repo}`.
 
+<!-- TOOLS:START -->
 ### File Tools
 
 | Tool | Description |
 |------|-------------|
-| `read_file` | Read the contents of a file from a GitHub repo |
-| `write_file` | Create or update a single file |
-| `push_multiple_files` | Create or update multiple files in a single commit |
-| `list_files` | List files and folders at a path |
-
-### Search & History
-
-| Tool | Description |
-|------|-------------|
-| `search_files` | Search file contents using GitHub Code Search |
-| `get_recent_commits` | Return recent commit history for a branch |
-
-### Advanced File Operations
-
-| Tool | Description |
-|------|-------------|
-| `move_file` | Copy to new path + return link for manual delete of original |
-| `delete_file` | Delete a file from the repo (destructive) |
-| `queue_write` | Queue a file write for batch commit (in-memory, resets on restart) |
-| `flush_queue` | Commit all queued writes in a single commit |
+| `read_file` | Read the contents of a file from a GitHub repository |
+| `write_file` | Create or update a single file in a GitHub repository |
+| `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API |
+| `list_files` | List files and folders at a path in a GitHub repository |
 
 ### Issue Tools
 
 | Tool | Description |
 |------|-------------|
-| `create_issue` | Create a new GitHub Issue |
-| `update_issue` | Update an existing GitHub Issue |
-| `list_issues` | List GitHub Issues with optional filters |
-| `read_issue` | Read the full body and comments of a GitHub Issue |
+| `create_issue` | Create a new GitHub Issue in a repository |
+| `update_issue` | Update an existing GitHub Issue (change status, labels, title, or body) |
+| `list_issues` | List GitHub Issues in a repository with optional filters |
 | `add_issue_comment` | Add a comment to an existing GitHub Issue |
+| `read_issue` | Read the full body and comments of a GitHub Issue |
+
+### Search & History
+
+| Tool | Description |
+|------|-------------|
+| `search_files` | Search file contents across a GitHub repository using GitHub Code Search |
+| `get_recent_commits` | Return recent commit history for a branch in a GitHub repository |
+| `get_file_diff` | Show file changes between a commit SHA and a branch head (default: main) |
+
+### Branch Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_branch` | Create a new branch from an existing one |
+| `list_branches` | List all branches in a GitHub repository |
+
+### Advanced File Operations
+
+| Tool | Description |
+|------|-------------|
+| `move_file` | Move or rename a file. Reads from old path, writes to new path, then returns a GitHub link for the user to manually delete the original. |
+| `delete_file` | Delete a file from a GitHub repository. This is a destructive operation — the file will be permanently removed from the specified branch. |
+| `queue_write` | Queue a file write for batch commit. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. |
+| `flush_queue` | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. |
 
 ### Repo Management
 
 | Tool | Description |
 |------|-------------|
-| `create_repo` | Create a new GitHub repository (personal account or org). Returns `full_name`, `html_url`, `clone_url`, and `default_branch` so Claude can immediately write files to it. |
+| `create_repo` | Create a new GitHub repository on a personal account or within an organization |
 
-### Phase 2 (Registered stubs, not yet implemented)
+### Project Management
 
 | Tool | Description |
 |------|-------------|
-| `create_branch` | Create a new branch from an existing one |
-| `list_branches` | List all branches in the repo |
-| `get_file_diff` | Show file changes since a specific commit SHA |
-| `get_project_board` | Read GitHub Projects kanban board |
-| `move_issue_to_column` | Move an issue card on the Projects board |
+| `get_project_board` | Read a GitHub Projects V2 board — returns columns (status values) and the issues/PRs in each column |
+| `move_issue_to_column` | Move an issue to a target column (status) on a GitHub Projects V2 board |
+<!-- TOOLS:END -->
 
 ## API Endpoints
 

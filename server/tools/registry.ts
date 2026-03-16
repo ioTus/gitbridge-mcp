@@ -17,7 +17,8 @@ import { createRepoSchema } from "./create_repo.js";
 import { createBranchSchema } from "./create_branch.js";
 import { listBranchesSchema } from "./list_branches.js";
 import { getFileDiffSchema } from "./get_file_diff.js";
-import { phase2Stubs } from "./phase2_stubs.js";
+import { getProjectBoardSchema } from "./get_project_board.js";
+import { moveIssueToColumnSchema } from "./move_issue_to_column.js";
 
 export interface ToolSchema {
   name: string;
@@ -30,7 +31,7 @@ export interface ToolSchema {
   };
 }
 
-export const activeToolSchemas: ToolSchema[] = [
+export const allToolSchemas: ToolSchema[] = [
   readFileSchema,
   writeFileSchema,
   pushMultipleFilesSchema,
@@ -50,8 +51,6 @@ export const activeToolSchemas: ToolSchema[] = [
   createBranchSchema,
   listBranchesSchema,
   getFileDiffSchema,
+  getProjectBoardSchema,
+  moveIssueToColumnSchema,
 ] as ToolSchema[];
-
-export const phase2ToolSchemas: ToolSchema[] = phase2Stubs.map((s) => s.schema) as ToolSchema[];
-
-export const allToolSchemas: ToolSchema[] = [...activeToolSchemas, ...phase2ToolSchemas];
