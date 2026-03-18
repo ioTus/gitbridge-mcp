@@ -117,7 +117,8 @@ risks overwriting Claude's work.
 
 If `git fetch` / `git pull` are blocked by environment restrictions,
 use the GitHub API (Contents API) to check for upstream changes by
-comparing file contents before writing.
+comparing file contents before writing. **Do not write those files
+locally** — see "Git Sync Failure Protocol" below.
 
 ### After Completing Work (every issue, every significant milestone)
 
@@ -162,6 +163,48 @@ or how to merge.
 - [ ] The GitHub commit is visible in the repository
 - [ ] The Issue comment references the commit SHA or the file list pushed
 
+### Git Sync Failure Protocol
+
+The Replit main agent **cannot** perform git write operations (`git pull`,
+`git push`, `git remote add`, etc.) — they are blocked at the platform
+level. This is not a bug; it is a hard restriction.
+
+**If git operations are blocked:**
+
+1. Run `git remote -v` (read-only, always works) to confirm the remote
+   is missing or misconfigured.
+2. Use the GitHub API (Contents API) to compare local vs. remote file
+   contents — **read-only comparison only**.
+3. Report the divergence direction and file list to the user:
+   which files are ahead locally, which are ahead on GitHub.
+4. **Do NOT write files locally via the API as a pull substitute.**
+   This creates state outside git's awareness, makes `git status` lie,
+   and increases divergence. This was attempted in Issue #19 and made
+   things worse.
+5. Guide the user to reconnect via the Replit Git panel:
+   - Git (sidebar) → Settings → edit the Remote URL field
+   - Set to `https://github.com/ioTus/gitbridge-mcp.git`
+   - Pull from the main Git panel
+6. If the Git panel cannot reconnect (UI limitation), report that
+   clearly and wait for user input. Do not improvise further.
+
+**If git push is blocked but you need to push:**
+
+Use the GitHub Contents API to push changed files individually. This
+is a degraded fallback — it creates one commit per file and does not
+handle deletions or renames atomically. Document what was pushed in
+the Issue comment.
+
+**Session startup check (every session, before any work):**
+
+Run `git remote -v` as the very first operation. If `origin` is
+missing or does not point to `ioTus/gitbridge-mcp`, alert the user
+immediately and do not proceed with file modifications until the
+remote is restored. This catches silently dropped remotes before
+any work gets tangled up.
+
+See Issue #19 for the full incident that motivated this protocol.
+
 ### History
 
 If Replit closes an issue without pushing, Claude should re-open it and
@@ -185,7 +228,7 @@ Include the plan doc reference when applicable:
 
 ---
 
-*Last updated: 2026-03-16*
+*Last updated: 2026-03-18 (added Git Sync Failure Protocol — Issue #19)*
 
 *This file is maintained by Replit Agent with user approval. Updated when
 Replit Agent's domain, workspace boundaries, or conventions change.
