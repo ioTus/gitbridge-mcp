@@ -181,9 +181,9 @@ All tools accept `owner` and `repo` as required parameters. Write tools prefix t
 |------|-------------|
 | `search_files` | Search file contents across a GitHub repository using GitHub Code Search |
 | `get_recent_commits` | Return recent commit history for a branch in a GitHub repository |
-| `get_file_diff` | Show file changes between a commit SHA and a branch head (default: main) |
+| `get_file_diff` | Show file changes between a commit SHA and a branch head (default: main). Returns changed files with status and patch content. |
 
-### Branch Tools
+### Branch Management
 
 | Tool | Description |
 |------|-------------|
@@ -205,7 +205,7 @@ All tools accept `owner` and `repo` as required parameters. Write tools prefix t
 |------|-------------|
 | `create_repo` | Create a new GitHub repository on a personal account or within an organization |
 
-### Project Management
+### Project Boards
 
 | Tool | Description |
 |------|-------------|
@@ -250,7 +250,7 @@ the appropriate Claude Project for that repository.
 2. Read `IME-AGENTS.md` and `IME-AGENTS-replit.md` — these define the
    multi-agent collaboration workflow.
 3. Call `list_files` to confirm connectivity.
-4. Check `docs/plans/` for active plans (status: executing).
+4. Check `IME-docs/plans/` for active plans (status: executing).
 5. Check open Issues with `list_issues`.
 6. Ask the user what they want to work on.
 
@@ -350,7 +350,7 @@ When switching between repos, announce the switch clearly.
 3. Read `IME-AGENTS.md` and `IME-AGENTS-replit.md` from each target repo
    (if they exist) for multi-agent collaboration context.
 4. Call `list_files` on each repo to confirm connectivity.
-5. Check `docs/plans/` for active plans (status: executing).
+5. Check `IME-docs/plans/` for active plans (status: executing).
 6. Check open Issues with `list_issues`.
 7. Ask the user what they want to work on.
 

@@ -24,8 +24,8 @@ to GitHub repositories via the Model Context Protocol.
 | IME.md | This file — spoke bootstrap |
 | IME-AGENTS.md | Multi-agent overview and index |
 | IME-AGENTS-replit.md | Replit Agent workspace boundaries |
-| docs/plans/ | Plan documents |
-| docs/decisions/ | Decision log |
+| IME-docs/plans/ | Plan documents |
+| IME-docs/decisions/ | Decision log |
 
 ---
 
@@ -54,14 +54,16 @@ to GitHub repositories via the Model Context Protocol.
 | `flush_queue` | Advanced File Operations | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. |
 | `get_recent_commits` | Search & History | Return recent commit history for a branch in a GitHub repository |
 | `create_repo` | Repo Management | Create a new GitHub repository on a personal account or within an organization |
-| `create_branch` | Branch Tools | Create a new branch from an existing one |
-| `list_branches` | Branch Tools | List all branches in a GitHub repository |
-| `get_file_diff` | Search & History | Show file changes between a commit SHA and a branch head (default: main) |
-| `get_project_board` | Project Management | Read a GitHub Projects V2 board — returns columns (status values) and the issues/PRs in each column |
-| `move_issue_to_column` | Project Management | Move an issue to a target column (status) on a GitHub Projects V2 board |
+| `create_branch` | Branch Management | Create a new branch from an existing one |
+| `list_branches` | Branch Management | List all branches in a GitHub repository |
+| `get_file_diff` | Search & History | Show file changes between a commit SHA and a branch head (default: main). Returns changed files with status and patch content. |
+| `get_project_board` | Project Boards | Read a GitHub Projects V2 board — returns columns (status values) and the issues/PRs in each column |
+| `move_issue_to_column` | Project Boards | Move an issue to a target column (status) on a GitHub Projects V2 board |
 
 All tools require `owner` and `repo` parameters except `create_repo`
-(which takes `name` and optional `org`). Write tools prefix responses
-with `✅ Writing to: {owner}/{repo}`. Project tools require the PAT
-to have the `project` scope for GitHub Projects V2 access.
+(which takes `name` and optional `org`) and `get_project_board`
+(where `repo` is optional — only `owner` and `project_number` are required).
+Write tools prefix responses with `✅ Writing to: {owner}/{repo}`.
+Project tools require the PAT to have the `project` scope for
+GitHub Projects V2 access.
 <!-- TOOLS:END -->

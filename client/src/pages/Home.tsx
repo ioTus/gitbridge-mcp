@@ -35,7 +35,7 @@ interface ToolInfo {
   name: string;
   category: string;
   description: string;
-  phase: number;
+  phase: string;
 }
 
 interface PublicStatusData {
@@ -335,8 +335,8 @@ export default function Home() {
   }
 
   const authData = data as AuthenticatedStatusData;
-  const phase1Tools = authData.tools.filter((t) => t.phase !== 2);
-  const phase2Tools = authData.tools.filter((t) => t.phase === 2);
+  const phase1Tools = authData.tools.filter((t) => t.phase !== "stub");
+  const phase2Tools = authData.tools.filter((t) => t.phase === "stub");
 
   const categoryMeta: Record<string, { label: string; icon: typeof FileText }> = {
     file: { label: "File Tools", icon: FileText },
@@ -356,7 +356,7 @@ export default function Home() {
     return acc;
   }, {});
 
-  const categoryOrder = ["file", "issue", "search", "advanced", "repo", "branch", "project"];
+  const categoryOrder = ["file", "issue", "search", "branch", "advanced", "repo", "project"];
   const sortedCategories = Object.keys(phase1ByCategory).sort((a, b) => {
     const ia = categoryOrder.indexOf(a);
     const ib = categoryOrder.indexOf(b);

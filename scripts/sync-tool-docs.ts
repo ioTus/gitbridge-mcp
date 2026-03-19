@@ -38,7 +38,7 @@ const categoryLabels: Record<string, string> = {
   branch: "Branch Management",
   project: "Project Boards",
 };
-const categoryOrder = ["file", "issue", "search", "advanced", "repo", "branch", "project"];
+const categoryOrder = ["file", "issue", "search", "branch", "advanced", "repo", "project"];
 
 function sortCategories(cats: string[]): string[] {
   return [...cats].sort((a, b) => {
@@ -100,8 +100,11 @@ function generateClaudeTools(phase1: DocToolInfo[], phase2: DocToolInfo[]): stri
   }
   lines.push("");
   lines.push("All tools require `owner` and `repo` parameters except `create_repo`");
-  lines.push("(which takes `name` and optional `org`). Write tools prefix responses");
-  lines.push("with `✅ Writing to: {owner}/{repo}`.");
+  lines.push("(which takes `name` and optional `org`) and `get_project_board`");
+  lines.push("(where `repo` is optional — only `owner` and `project_number` are required).");
+  lines.push("Write tools prefix responses with `✅ Writing to: {owner}/{repo}`.");
+  lines.push("Project tools require the PAT to have the `project` scope for");
+  lines.push("GitHub Projects V2 access.");
   lines.push("");
 
   if (phase2.length > 0) {

@@ -45,7 +45,7 @@ what Replit built." Agents don't initiate cross-agent work on their own.
 
 ### 2. Plans are the source of truth
 
-Work is defined in `docs/plans/`. Issues branch off plans. Code
+Work is defined in `IME-docs/plans/`. Issues branch off plans. Code
 implements what's in the plan. If there's a conflict between a plan
 doc and an issue, the most recent agreed plan doc wins.
 
@@ -72,7 +72,7 @@ When agents disagree — on approach, priority, or feasibility:
    back. The pushback must include concrete reasoning — what risk is
    being missed, what trade-off is being overlooked.
 4. **Then commit.** If the user reaffirms after pushback, the decision
-   is final. Execute fully and log in `docs/decisions/` if significant.
+   is final. Execute fully and log in `IME-docs/decisions/` if significant.
 
 This prevents both silent compliance with bad decisions and endless
 re-litigation of settled ones.
@@ -83,10 +83,10 @@ re-litigation of settled ones.
 
 | Channel | Purpose |
 |---------|---------|
-| `docs/plans/*.md` | Strategy, specs, design decisions |
+| `IME-docs/plans/*.md` | Strategy, specs, design decisions |
 | GitHub Issues | Action items, task tracking, progress |
 | Issue comments | Async status updates between agents |
-| `docs/decisions/*.md` | Settled decisions (don't re-litigate) |
+| `IME-docs/decisions/*.md` | Settled decisions (don't re-litigate) |
 
 ### What does NOT go in the repo:
 

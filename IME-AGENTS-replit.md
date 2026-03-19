@@ -30,8 +30,8 @@ code, testing, deployment, and infrastructure for this project.
 
 ### What Replit Agent does NOT own:
 
-- Plan documents (`docs/plans/`) — shared workspace, see `IME-AGENTS.md`
-- Decision log (`docs/decisions/`) — shared workspace
+- Plan documents (`IME-docs/plans/`) — shared workspace, see `IME-AGENTS.md`
+- Decision log (`IME-docs/decisions/`) — shared workspace
 - `IME.md` — spoke bootstrap and operating rules
 - `IME-AGENTS.md` — shared agent index
 - `README.md` — collaboratively maintained (both agents can update)
@@ -64,7 +64,7 @@ with the user, provided it reads the directory first to avoid conflicts.
 
 ### Claude → Replit Agent (spec to build):
 
-1. Claude writes a plan doc in `docs/plans/`
+1. Claude writes a plan doc in `IME-docs/plans/`
 2. Claude creates an Issue referencing the plan
 3. User tells Replit Agent to read the plan and issue
 4. Replit Agent responds (via `-response` doc) or builds

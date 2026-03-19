@@ -10,7 +10,7 @@ export const getProjectBoardSchema = {
       ...ownerRepoParams,
       project_number: { type: "number", description: "Project number (visible in the project URL)" },
     },
-    required: ["owner", "repo", "project_number"],
+    required: ["owner", "project_number"],
   },
 };
 
@@ -124,11 +124,16 @@ export async function getProjectBoard(args: {
   repo?: string;
   project_number: number;
 }) {
-  const validated = validateOwnerRepo(args);
-  if ("error" in validated) {
-    return { content: [{ type: "text", text: `Error: ${validated.error}` }], isError: true };
+  if (!args.owner) {
+    return { content: [{ type: "text", text: "Error: Missing required parameter: owner must be provided on every tool call." }], isError: true };
   }
-  const { owner } = validated;
+  if (args.repo) {
+    const validated = validateOwnerRepo(args);
+    if ("error" in validated) {
+      return { content: [{ type: "text", text: `Error: ${validated.error}` }], isError: true };
+    }
+  }
+  const owner = args.owner;
   const { project_number } = args;
 
   try {

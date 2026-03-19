@@ -54,3 +54,6 @@ export const allToolSchemas: ToolSchema[] = [
   getProjectBoardSchema,
   moveIssueToColumnSchema,
 ] as ToolSchema[];
+
+export const activeToolSchemas = allToolSchemas;
+export const phase2ToolSchemas: ToolSchema[] = [];
