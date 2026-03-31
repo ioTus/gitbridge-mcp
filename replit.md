@@ -105,3 +105,4 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 
 ## Public Repository
 - Source published at github.com/ioTus/gitbridge-mcp
+- Last sync verified: 2026-03-30
