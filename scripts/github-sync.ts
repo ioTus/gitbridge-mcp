@@ -364,28 +364,47 @@ export async function commentOnIssue(
 }
 
 if (process.argv[1]?.endsWith("github-sync.ts") || process.argv[1]?.endsWith("github-sync.js")) {
-  const message = process.argv[2] || undefined;
-  syncToGitHub(message).then((result) => {
-    console.log("\n=== GitHub Sync Report ===\n");
-    if (result.filesChanged.length === 0) {
-      console.log("No changes to push.\n");
-      return;
+  const subcommand = process.argv[2];
+
+  if (subcommand === "comment") {
+    const issueNumber = parseInt(process.argv[3] || "", 10);
+    const body = process.argv[4] || "";
+    if (!issueNumber || !body) {
+      console.error("Usage: github-sync.ts comment <issueNumber> <body>");
+      console.error('Example: github-sync.ts comment 1 "**[Replit]:** Done."');
+      process.exit(1);
     }
-    if (result.success) {
-      console.log(`✅ Push successful`);
-      console.log(`   Commit SHA: ${result.sha}`);
-      console.log(`   Files pushed:`);
-      result.filesChanged.forEach((f) => console.log(`     - ${f}`));
-    } else {
-      console.log(`❌ Push failed: ${result.error}`);
-      console.log(`   Files that needed pushing:`);
-      result.filesChanged.forEach((f) => console.log(`     - ${f}`));
-    }
-    if (result.upstreamWarnings.length > 0) {
-      console.log(`\n   Upstream warnings:`);
-      result.upstreamWarnings.forEach((w) => console.log(`     ${w}`));
-    }
-    console.log();
-    process.exit(result.success ? 0 : 1);
-  });
+    commentOnIssue(issueNumber, body).then((url) => {
+      console.log(`\n✅ Comment posted: ${url}\n`);
+      process.exit(0);
+    }).catch((err) => {
+      console.error(`\n❌ Failed to post comment: ${err.message}\n`);
+      process.exit(1);
+    });
+  } else {
+    const message = subcommand || undefined;
+    syncToGitHub(message).then((result) => {
+      console.log("\n=== GitHub Sync Report ===\n");
+      if (result.filesChanged.length === 0) {
+        console.log("No changes to push.\n");
+        return;
+      }
+      if (result.success) {
+        console.log(`✅ Push successful`);
+        console.log(`   Commit SHA: ${result.sha}`);
+        console.log(`   Files pushed:`);
+        result.filesChanged.forEach((f) => console.log(`     - ${f}`));
+      } else {
+        console.log(`❌ Push failed: ${result.error}`);
+        console.log(`   Files that needed pushing:`);
+        result.filesChanged.forEach((f) => console.log(`     - ${f}`));
+      }
+      if (result.upstreamWarnings.length > 0) {
+        console.log(`\n   Upstream warnings:`);
+        result.upstreamWarnings.forEach((w) => console.log(`     ${w}`));
+      }
+      console.log();
+      process.exit(result.success ? 0 : 1);
+    });
+  }
 }
