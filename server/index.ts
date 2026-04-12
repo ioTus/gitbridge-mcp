@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { persistLog } from "./lib/persistent-log";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -47,10 +48,19 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
+    if (path.startsWith("/api") || path === "/mcp" || path === "/sse" || path === "/messages" || path === "/oauth/token") {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        const SENSITIVE_PATHS = ["/oauth/token", "/api/dev-credentials"];
+        if (SENSITIVE_PATHS.includes(path)) {
+          const redacted = { ...capturedJsonResponse };
+          if (redacted.access_token) redacted.access_token = "[REDACTED]";
+          if (redacted.refresh_token) redacted.refresh_token = "[REDACTED]";
+          if (redacted.client_secret) redacted.client_secret = "[REDACTED]";
+          logLine += ` :: ${JSON.stringify(redacted)}`;
+        } else {
+          logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        }
       }
 
       log(logLine);
@@ -99,6 +109,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      persistLog({ event: "SERVER_START" });
     },
   );
 })();

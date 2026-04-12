@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { type Server as HttpServer } from "http";
 import { randomUUID, createHmac, createHash, timingSafeEqual } from "crypto";
+import rateLimit from "express-rate-limit";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -30,6 +31,8 @@ import { getFileDiff } from "./tools/get_file_diff.js";
 import { getProjectBoard } from "./tools/get_project_board.js";
 import { moveIssueToColumn } from "./tools/move_issue_to_column.js";
 import { allToolSchemas } from "./tools/registry.js";
+import { checkGithubStatus, getLastSuccessfulOperation, getUptimeSeconds } from "./lib/health.js";
+import { persistLog, persistLogWithIp } from "./lib/persistent-log.js";
 
 const allTools = allToolSchemas;
 
@@ -133,6 +136,13 @@ const authCodes: Map<string, {
   codeChallengeMethod?: string;
 }> = new Map();
 
+const refreshTokens: Map<string, {
+  clientId: string;
+  expiresAt: number;
+}> = new Map();
+
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 console.log(`[${new Date().toISOString()}] [MCP] OAuth 2.0 authentication is ENABLED`);
 console.log(`[${new Date().toISOString()}] [MCP] Authorization endpoint: /authorize`);
 console.log(`[${new Date().toISOString()}] [MCP] Token endpoint: /oauth/token`);
@@ -200,6 +210,8 @@ function requireAuth(req: Request, res: Response): boolean {
   const resourceMetadataUrl = `${origin}/.well-known/oauth-protected-resource`;
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.log(`[${new Date().toISOString()}] [Auth] REJECTED ${req.method} ${req.path} — missing or malformed Authorization header (IP: ${req.ip})`);
+    persistLogWithIp({ event: "AUTH_REJECTED", method: req.method, path: req.path, reason: "missing_header" }, req.ip || "");
     res.setHeader("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl}"`);
     res.status(401).json({ error: "unauthorized", error_description: "Missing or invalid Authorization header" });
     return false;
@@ -207,6 +219,8 @@ function requireAuth(req: Request, res: Response): boolean {
   const token = authHeader.slice(7);
   const payload = verifyJwt(token, OAUTH_CLIENT_SECRET!);
   if (!payload) {
+    console.log(`[${new Date().toISOString()}] [Auth] REJECTED ${req.method} ${req.path} — token invalid or expired (IP: ${req.ip})`);
+    persistLogWithIp({ event: "AUTH_REJECTED", method: req.method, path: req.path, reason: "invalid_or_expired_token" }, req.ip || "");
     res.setHeader("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl}", error="invalid_token"`);
     res.status(401).json({ error: "invalid_token", error_description: "Token is invalid or expired" });
     return false;
@@ -216,6 +230,41 @@ function requireAuth(req: Request, res: Response): boolean {
 
 const sseTransports: Record<string, SSEServerTransport> = {};
 const streamableTransports: Record<string, StreamableHTTPServerTransport> = {};
+
+const MAX_SESSIONS = Math.max(1, parseInt(process.env.MAX_SESSIONS || "50", 10) || 50);
+
+const tokenRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "too_many_requests", error_description: "Rate limit exceeded. Try again later." },
+});
+
+setInterval(() => {
+  const now = Date.now();
+  let sweptCodes = 0;
+  for (const [code, data] of authCodes) {
+    if (data.expiresAt < now) {
+      authCodes.delete(code);
+      sweptCodes++;
+    }
+  }
+  let sweptRefresh = 0;
+  for (const [token, data] of refreshTokens) {
+    if (data.expiresAt < now) {
+      refreshTokens.delete(token);
+      sweptRefresh++;
+    }
+  }
+  if (sweptCodes > 0 || sweptRefresh > 0) {
+    console.log(`[${new Date().toISOString()}] [OAuth] Swept ${sweptCodes} expired auth code(s), ${sweptRefresh} expired refresh token(s)`);
+  }
+}, 60 * 1000);
+
+function totalSessions(): number {
+  return Object.keys(sseTransports).length + Object.keys(streamableTransports).length;
+}
 
 export async function registerRoutes(
   httpServer: HttpServer,
@@ -243,7 +292,7 @@ export async function registerRoutes(
       authorization_endpoint: `${origin}/authorize`,
       token_endpoint: `${origin}/oauth/token`,
       response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code", "client_credentials"],
+      grant_types_supported: ["authorization_code", "client_credentials", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["client_secret_post"],
     });
@@ -306,14 +355,17 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
-  app.post("/oauth/token", (req: Request, res: Response) => {
+  app.post("/oauth/token", (req: Request, res: Response, next: NextFunction) => {
     setCorsHeaders(res, req.headers.origin);
-
+    next();
+  }, tokenRateLimiter, (req: Request, res: Response) => {
     let grantType: string | undefined;
     let clientId: string | undefined;
     let clientSecret: string | undefined;
     let code: string | undefined;
     let redirectUri: string | undefined;
+
+    let incomingRefreshToken: string | undefined;
 
     if (req.is("application/x-www-form-urlencoded")) {
       grantType = req.body.grant_type;
@@ -321,16 +373,18 @@ export async function registerRoutes(
       clientSecret = req.body.client_secret;
       code = req.body.code;
       redirectUri = req.body.redirect_uri;
+      incomingRefreshToken = req.body.refresh_token;
     } else {
       grantType = req.body?.grant_type;
       clientId = req.body?.client_id;
       clientSecret = req.body?.client_secret;
       code = req.body?.code;
       redirectUri = req.body?.redirect_uri;
+      incomingRefreshToken = req.body?.refresh_token;
     }
 
-    if (grantType !== "client_credentials" && grantType !== "authorization_code") {
-      res.status(400).json({ error: "unsupported_grant_type", error_description: "Supported grant types: client_credentials, authorization_code" });
+    if (grantType !== "client_credentials" && grantType !== "authorization_code" && grantType !== "refresh_token") {
+      res.status(400).json({ error: "unsupported_grant_type", error_description: "Supported grant types: client_credentials, authorization_code, refresh_token" });
       return;
     }
 
@@ -399,12 +453,56 @@ export async function registerRoutes(
       }
     }
 
+    if (grantType === "refresh_token") {
+      if (!incomingRefreshToken) {
+        res.status(400).json({ error: "invalid_request", error_description: "refresh_token is required for refresh_token grant" });
+        return;
+      }
+
+      const storedRefresh = refreshTokens.get(incomingRefreshToken);
+      if (!storedRefresh) {
+        console.log(`[${new Date().toISOString()}] [OAuth] Refresh token not found (client: ${clientId})`);
+        persistLogWithIp({ event: "REFRESH_REJECTED", reason: "not_found", client: clientId }, req.ip || "");
+        res.status(400).json({ error: "invalid_grant", error_description: "Invalid or expired refresh token" });
+        return;
+      }
+
+      if (storedRefresh.expiresAt < Date.now()) {
+        refreshTokens.delete(incomingRefreshToken);
+        console.log(`[${new Date().toISOString()}] [OAuth] Refresh token expired (client: ${clientId})`);
+        persistLogWithIp({ event: "REFRESH_REJECTED", reason: "expired", client: clientId }, req.ip || "");
+        res.status(400).json({ error: "invalid_grant", error_description: "Refresh token has expired" });
+        return;
+      }
+
+      if (storedRefresh.clientId !== clientId) {
+        refreshTokens.delete(incomingRefreshToken);
+        console.log(`[${new Date().toISOString()}] [OAuth] Refresh token client mismatch (expected: ${storedRefresh.clientId}, got: ${clientId})`);
+        persistLogWithIp({ event: "REFRESH_REJECTED", reason: "client_mismatch", client: clientId }, req.ip || "");
+        res.status(400).json({ error: "invalid_grant", error_description: "Refresh token was issued to a different client" });
+        return;
+      }
+
+      refreshTokens.delete(incomingRefreshToken);
+    }
+
     const now = Math.floor(Date.now() / 1000);
-    const expiresIn = 3600;
+    const expiresIn = 86400;
     const payload = { sub: clientId, iat: now, exp: now + expiresIn };
     const accessToken = signJwt(payload, OAUTH_CLIENT_SECRET!);
 
+    const newRefreshToken = randomUUID();
+    refreshTokens.set(newRefreshToken, {
+      clientId: clientId!,
+      expiresAt: Date.now() + REFRESH_TOKEN_TTL_MS,
+    });
+
     console.log(`[${new Date().toISOString()}] [OAuth] Access token issued for client: ${clientId} (grant: ${grantType})`);
+    if (grantType === "refresh_token") {
+      persistLogWithIp({ event: "REFRESH_ISSUED", grant: grantType, client: clientId }, req.ip || "");
+    } else {
+      persistLogWithIp({ event: "TOKEN_ISSUED", grant: grantType, client: clientId }, req.ip || "");
+    }
 
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Pragma", "no-cache");
@@ -412,6 +510,7 @@ export async function registerRoutes(
       access_token: accessToken,
       token_type: "bearer",
       expires_in: expiresIn,
+      refresh_token: newRefreshToken,
     });
   });
 
@@ -464,8 +563,32 @@ export async function registerRoutes(
         description: t.description,
         phase: "live",
       })),
-      activeSessions: Object.keys(sseTransports).length + Object.keys(streamableTransports).length,
+      activeSessions: totalSessions(),
+      maxSessions: MAX_SESSIONS,
     });
+  });
+
+  app.get("/health", async (_req: Request, res: Response) => {
+    try {
+      const githubStatus = await checkGithubStatus();
+      res.json({
+        server: "up",
+        github_api: githubStatus.github_api,
+        pat_valid: githubStatus.pat_valid,
+        pat_expires: githubStatus.pat_expires,
+        last_successful_operation: getLastSuccessfulOperation(),
+        uptime_seconds: getUptimeSeconds(),
+      });
+    } catch {
+      res.json({
+        server: "up",
+        github_api: "unknown",
+        pat_valid: false,
+        pat_expires: "unknown",
+        last_successful_operation: getLastSuccessfulOperation(),
+        uptime_seconds: getUptimeSeconds(),
+      });
+    }
   });
 
   app.options("/mcp", (req: Request, res: Response) => {
@@ -495,6 +618,16 @@ export async function registerRoutes(
       return;
     }
 
+    if (totalSessions() >= MAX_SESSIONS) {
+      console.log(`[${new Date().toISOString()}] [MCP] Session cap reached (${MAX_SESSIONS}), rejecting new Streamable HTTP session`);
+      res.status(503).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: `Server session limit reached (${MAX_SESSIONS}). Try again later.` },
+        id: null,
+      });
+      return;
+    }
+
     console.log(`[${new Date().toISOString()}] [MCP] Streamable HTTP POST (new session)`);
 
     const transport = new StreamableHTTPServerTransport({
@@ -507,6 +640,7 @@ export async function registerRoutes(
       const sid = transport.sessionId;
       if (sid) {
         console.log(`[${new Date().toISOString()}] [MCP] Streamable session closed: ${sid}`);
+        persistLog({ event: "SESSION_CLOSE", session: sid });
         delete streamableTransports[sid];
       }
     };
@@ -517,6 +651,7 @@ export async function registerRoutes(
     if (transport.sessionId) {
       streamableTransports[transport.sessionId] = transport;
       console.log(`[${new Date().toISOString()}] [MCP] Streamable session started: ${transport.sessionId}`);
+      persistLog({ event: "SESSION_START", session: transport.sessionId });
     }
   });
 
@@ -572,6 +707,13 @@ export async function registerRoutes(
   app.get("/sse", async (req: Request, res: Response) => {
     setCorsHeaders(res, req.headers.origin);
     if (!requireAuth(req, res)) return;
+
+    if (totalSessions() >= MAX_SESSIONS) {
+      console.log(`[${new Date().toISOString()}] [MCP] Session cap reached (${MAX_SESSIONS}), rejecting new SSE session`);
+      res.status(503).json({ error: "service_unavailable", error_description: `Server session limit reached (${MAX_SESSIONS}). Try again later.` });
+      return;
+    }
+
     console.log(`[${new Date().toISOString()}] [MCP] New SSE connection request`);
 
     const mcpServer = createMcpServer();
@@ -580,11 +722,13 @@ export async function registerRoutes(
 
     transport.onclose = () => {
       console.log(`[${new Date().toISOString()}] [MCP] SSE session closed: ${transport.sessionId}`);
+      persistLog({ event: "SESSION_CLOSE", session: transport.sessionId });
       delete sseTransports[transport.sessionId];
     };
 
     await mcpServer.connect(transport);
     console.log(`[${new Date().toISOString()}] [MCP] SSE session started: ${transport.sessionId}`);
+    persistLog({ event: "SESSION_START", session: transport.sessionId });
   });
 
   app.post("/messages", async (req: Request, res: Response) => {

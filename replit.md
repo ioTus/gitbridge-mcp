@@ -41,6 +41,9 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 ## Authentication
 - OAuth 2.0 is **mandatory** — there is no unauthenticated/open mode. The server exits at startup if `OAUTH_CLIENT_ID` or `OAUTH_CLIENT_SECRET` is missing.
 - Full Authorization Code flow with optional PKCE (S256). Exposes OAuth discovery metadata. JWTs signed with HMAC-SHA256. All MCP endpoints require Bearer JWT.
+- **Token TTL:** Access tokens expire after **24 hours** (86400s). Refresh tokens expire after **30 days**.
+- **Refresh tokens:** Every token response includes a `refresh_token`. Clients can exchange it via `grant_type=refresh_token` for a new access token + new refresh token (rotation enforced — old refresh token is invalidated on use).
+- **Supported grant types:** `authorization_code`, `client_credentials`, `refresh_token` (advertised in `/.well-known/oauth-authorization-server`).
 - Dashboard login uses `client_credentials` grant with the same OAuth credentials. JWT stored in `sessionStorage`.
 - `/api/status` returns tiered data: unauthenticated gets `{status, server, version}` only; authenticated gets full tool list, session count, and endpoint info.
 - CORS headers are only set for allow-listed origins (claude.ai, claude.com). Unknown origins get no CORS headers.
@@ -50,7 +53,9 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - Optional `ALLOWED_REPOS` env var restricts which repositories all tools can access. Check is in `validateOwnerRepo()`.
 - `POST /oauth/token` is rate-limited to 5 requests per IP per minute via `express-rate-limit`. Exceeding returns 429.
 - Concurrent MCP sessions (SSE + Streamable HTTP) are capped at `MAX_SESSIONS` (default 50). New connections beyond the cap receive 503.
-- Expired OAuth authorization codes are swept every 60 seconds by a `setInterval` timer, in addition to cleanup on redemption.
+- Expired OAuth authorization codes and refresh tokens are swept every 60 seconds by a `setInterval` timer, in addition to cleanup on redemption.
+- **Auth failure logging:** `requireAuth` logs every rejected request with timestamp, method, path, rejection reason (missing header / expired token), and client IP. The Express request logger covers `/mcp`, `/sse`, `/messages`, and `/oauth/token` in addition to `/api` paths.
+- **Persistent auth log:** Key OAuth and session events are written to `logs/auth.log` (JSON Lines format) and survive server restarts and redeployments. Events captured: `SERVER_START`, `TOKEN_ISSUED`, `REFRESH_ISSUED`, `REFRESH_REJECTED`, `AUTH_REJECTED`, `SESSION_START`, `SESSION_CLOSE`. IPs are stored as daily HMAC hashes (correlatable within a day, not identifiable). Log file capped at 5MB with one backup (`auth.log.1`). Directory permissions: 0700; file permissions: 0600. Not web-accessible. Listed in `.gitignore`.
 
 ## Dev Auto-Login
 - In development mode (`NODE_ENV=development`), the server exposes `GET /api/dev-credentials` which returns OAuth client_id and client_secret

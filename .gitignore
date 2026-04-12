@@ -6,3 +6,4 @@ vite.config.ts.*
 *.tar.gz
 .env
 .dev-credentials.json
+logs/
