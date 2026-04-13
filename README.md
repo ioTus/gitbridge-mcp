@@ -160,13 +160,13 @@ All tools accept `owner` and `repo` as required parameters. Write tools prefix t
 
 | Tool | Description |
 |------|-------------|
-| `read_file` | Read file contents. Supports `content_encoding: "base64"` for binary files, which returns `mime_type` and `size_bytes` metadata alongside content. |
-| `write_file` | Create or update a single file. Supports `content_encoding: "base64"` for binary content. |
-| `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
+| `read_file` | Read the contents of a file from a GitHub repository. Supports text (UTF-8) and binary (base64) content encoding. When using base64 encoding, the response includes mime_type and size_bytes metadata. |
+| `write_file` | Create or update a single file in a GitHub repository. Supports text (UTF-8) and binary (base64) content encoding. |
+| `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API. Supports mixing text and binary files via per-file content_encoding. |
 | `list_files` | List files and folders at a path in a GitHub repository |
-| `patch_file` | Apply targeted edits (replace, insert_after, insert_before, delete) to a file without sending full content. Atomic — all operations succeed or none apply. |
-| `patch_multiple_files` | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |
-| `check_file_status` | Return file metadata (SHA, size, last modified) without content. Use to verify if a file changed before re-reading. |
+| `patch_file` | Apply targeted edits to a file without sending the full content. Supports replace, insert_after, insert_before, and delete operations. All operations are atomic — if any operation fails (e.g. match not found or ambiguous), none are applied. Each match/old string must be unique in the file. |
+| `patch_multiple_files` | Apply targeted edits across multiple files in a single atomic commit. Each file specifies its own operations array (replace, insert_after, insert_before, delete). All operations across all files are atomic — if any operation fails, none are applied. Combines the token efficiency of patch_file with the atomicity of push_multiple_files. |
+| `check_file_status` | Lightweight file metadata check — returns SHA, size, and last-modified timestamp WITHOUT file content. Use to detect whether a file has changed since it was last read, avoiding expensive full re-reads. Compare the returned SHA against a previously noted SHA to decide if a full read_file is needed. |
 
 ### Issue Tools
 
@@ -199,8 +199,8 @@ All tools accept `owner` and `repo` as required parameters. Write tools prefix t
 |------|-------------|
 | `move_file` | Move or rename a file. Reads from old path, writes to new path, then returns a GitHub link for the user to manually delete the original. |
 | `delete_file` | Delete a file from a GitHub repository. This is a destructive operation — the file will be permanently removed from the specified branch. |
-| `queue_write` | Queue a file write for batch commit. Supports `content_encoding: "base64"` for binary files. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. |
-| `flush_queue` | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. |
+| `queue_write` | Queue a file write for batch commit. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. Supports both text (UTF-8) and binary (base64) content encoding. |
+| `flush_queue` | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. Supports mixed text and binary files. |
 
 ### Repo Management
 

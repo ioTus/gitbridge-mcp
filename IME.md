@@ -38,13 +38,10 @@ to GitHub repositories via the Model Context Protocol.
 
 | Tool | Category | What it does |
 |------|----------|-------------|
-| `read_file` | File Tools | Read file contents. Supports `content_encoding: "base64"` for binary files, which returns `mime_type` and `size_bytes` metadata alongside content. |
-| `write_file` | File Tools | Create or update a single file. Supports `content_encoding: "base64"` for binary content. |
-| `push_multiple_files` | File Tools | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
+| `read_file` | File Tools | Read the contents of a file from a GitHub repository. Supports text (UTF-8) and binary (base64) content encoding. When using base64 encoding, the response includes mime_type and size_bytes metadata. |
+| `write_file` | File Tools | Create or update a single file in a GitHub repository. Supports text (UTF-8) and binary (base64) content encoding. |
+| `push_multiple_files` | File Tools | Create or update multiple files in a single commit using the Git Data API. Supports mixing text and binary files via per-file content_encoding. |
 | `list_files` | File Tools | List files and folders at a path in a GitHub repository |
-| `patch_file` | File Tools | Apply targeted edits (replace, insert_after, insert_before, delete) to a file without sending full content. Atomic — all operations succeed or none apply. |
-| `patch_multiple_files` | File Tools | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |
-| `check_file_status` | File Tools | Return file metadata (SHA, size, last modified) without content. Use to verify if a file changed before re-reading. |
 | `create_issue` | Issue Tools | Create a new GitHub Issue in a repository |
 | `update_issue` | Issue Tools | Update an existing GitHub Issue (change status, labels, title, or body) |
 | `list_issues` | Issue Tools | List GitHub Issues in a repository with optional filters |
@@ -53,8 +50,8 @@ to GitHub repositories via the Model Context Protocol.
 | `search_files` | Search & History | Search file contents across a GitHub repository using GitHub Code Search |
 | `move_file` | Advanced File Operations | Move or rename a file. Reads from old path, writes to new path, then returns a GitHub link for the user to manually delete the original. |
 | `delete_file` | Advanced File Operations | Delete a file from a GitHub repository. This is a destructive operation — the file will be permanently removed from the specified branch. |
-| `queue_write` | Advanced File Operations | Queue a file write for batch commit. Supports `content_encoding: "base64"` for binary files. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. |
-| `flush_queue` | Advanced File Operations | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. |
+| `queue_write` | Advanced File Operations | Queue a file write for batch commit. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. Supports both text (UTF-8) and binary (base64) content encoding. |
+| `flush_queue` | Advanced File Operations | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. Supports mixed text and binary files. |
 | `get_recent_commits` | Search & History | Return recent commit history for a branch in a GitHub repository |
 | `create_repo` | Repo Management | Create a new GitHub repository on a personal account or within an organization |
 | `create_branch` | Branch Management | Create a new branch from an existing one |
@@ -62,6 +59,9 @@ to GitHub repositories via the Model Context Protocol.
 | `get_file_diff` | Search & History | Show file changes between a commit SHA and a branch head (default: main). Returns changed files with status and patch content. |
 | `get_project_board` | Project Boards | Read a GitHub Projects V2 board — returns columns (status values) and the issues/PRs in each column |
 | `move_issue_to_column` | Project Boards | Move an issue to a target column (status) on a GitHub Projects V2 board |
+| `patch_file` | File Tools | Apply targeted edits to a file without sending the full content. Supports replace, insert_after, insert_before, and delete operations. All operations are atomic — if any operation fails (e.g. match not found or ambiguous), none are applied. Each match/old string must be unique in the file. |
+| `patch_multiple_files` | File Tools | Apply targeted edits across multiple files in a single atomic commit. Each file specifies its own operations array (replace, insert_after, insert_before, delete). All operations across all files are atomic — if any operation fails, none are applied. Combines the token efficiency of patch_file with the atomicity of push_multiple_files. |
+| `check_file_status` | File Tools | Lightweight file metadata check — returns SHA, size, and last-modified timestamp WITHOUT file content. Use to detect whether a file has changed since it was last read, avoiding expensive full re-reads. Compare the returned SHA against a previously noted SHA to decide if a full read_file is needed. |
 
 All tools require `owner` and `repo` parameters except `create_repo`
 (which takes `name` and optional `org`) and `get_project_board`
