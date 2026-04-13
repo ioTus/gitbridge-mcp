@@ -11,7 +11,7 @@ This is the original first paragraph. It contains some text that we will modify.
 
 ## Section Two
 
-The status of this project is: DRAFT
+The status of this project is: ACTIVE
 
 Here is a line we plan to delete entirely.
 
