@@ -15,6 +15,7 @@ This subsection was added by patch_file insert_after.
 The status of this project is: ACTIVE
 
 
+---
 ## Section Three
 
 Final section with closing remarks.
