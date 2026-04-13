@@ -4,10 +4,9 @@
 
 This is the original first paragraph. It contains some text that we will modify.
 
-- Item alpha
-- Item beta
+- Item one
+- Item two
 - Item gamma
-- Item delta
 
 ## Section Two
 This subsection was added by patch_file insert_after.
