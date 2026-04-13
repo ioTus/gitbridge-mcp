@@ -13,7 +13,6 @@ This is the original first paragraph. It contains some text that we will modify.
 
 The status of this project is: ACTIVE
 
-Here is a line we plan to delete entirely.
 
 ## Section Three
 
