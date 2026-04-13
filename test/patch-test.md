@@ -10,6 +10,7 @@ This is the original first paragraph. It contains some text that we will modify.
 - Item delta
 
 ## Section Two
+This subsection was added by patch_file insert_after.
 
 The status of this project is: ACTIVE
 
