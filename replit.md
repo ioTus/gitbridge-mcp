@@ -107,6 +107,9 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - Never reference local SHAs for GitHub operations; never `git push`; never `git pull`
 - Full protocol documented in `IME-AGENTS-replit.md` § "Sync to GitHub"
 
+## Tool Doc Sync (Task #12)
+- **After shipping any new tool or changing a tool schema**, run `npx tsx scripts/sync-tool-docs.ts` to regenerate tool tables in `README.md`, `IME.md`, and update the tool count in `replit.md` from the registry source of truth
+
 ## Automated GitHub Sync (Issue #27)
 - **After every unit of work**, run `npx tsx scripts/github-sync.ts "[commit message]"` to push all changes to GitHub
 - The sync utility uses the Git Data API — it reads GitHub's current HEAD, builds a new commit on top, and verifies the push
