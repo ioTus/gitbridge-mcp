@@ -85,7 +85,7 @@ with the user, provided it reads the directory first to avoid conflicts.
 After completing a build that changes tools or architecture, Replit Agent
 should:
 
-1. Update `IME.md` tool tables (Available Tools section)
+1. Update `IME.md` tool tables (Available Tools section) **and** `README.md` Tools section — both must be kept in sync. Also update the tool count in `replit.md`.
 2. Update this file if the build affects workspace boundaries
 3. Push code to GitHub (see rule below)
 4. Comment on the relevant Issue with completion status
