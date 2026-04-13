@@ -155,15 +155,18 @@ Your GitHub PAT determines the **blast radius** — every repo the PAT can acces
 
 All tools accept `owner` and `repo` as required parameters. Write tools prefix their responses with `✅ Writing to: {owner}/{repo}`.
 
-<!-- TOOLS:START -->
+<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 24 -->
 ### File Tools
 
 | Tool | Description |
 |------|-------------|
-| `read_file` | Read the contents of a file from a GitHub repository |
-| `write_file` | Create or update a single file in a GitHub repository |
-| `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API |
+| `read_file` | Read file contents. Supports `content_encoding: "base64"` for binary files, which returns `mime_type` and `size_bytes` metadata alongside content. |
+| `write_file` | Create or update a single file. Supports `content_encoding: "base64"` for binary content. |
+| `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
 | `list_files` | List files and folders at a path in a GitHub repository |
+| `patch_file` | Apply targeted edits (replace, insert_after, insert_before, delete) to a file without sending full content. Atomic — all operations succeed or none apply. |
+| `patch_multiple_files` | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |
+| `check_file_status` | Return file metadata (SHA, size, last modified) without content. Use to verify if a file changed before re-reading. |
 
 ### Issue Tools
 
@@ -196,7 +199,7 @@ All tools accept `owner` and `repo` as required parameters. Write tools prefix t
 |------|-------------|
 | `move_file` | Move or rename a file. Reads from old path, writes to new path, then returns a GitHub link for the user to manually delete the original. |
 | `delete_file` | Delete a file from a GitHub repository. This is a destructive operation — the file will be permanently removed from the specified branch. |
-| `queue_write` | Queue a file write for batch commit. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. |
+| `queue_write` | Queue a file write for batch commit. Supports `content_encoding: "base64"` for binary files. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. |
 | `flush_queue` | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. |
 
 ### Repo Management

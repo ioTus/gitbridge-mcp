@@ -33,15 +33,18 @@ to GitHub repositories via the Model Context Protocol.
 
 *Updated by Replit Agent with each build.*
 
-<!-- TOOLS:START -->
+<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in README.md and replit.md. Tool count: 24 -->
 ### Live (V2):
 
 | Tool | Category | What it does |
 |------|----------|-------------|
-| `read_file` | File Tools | Read the contents of a file from a GitHub repository |
-| `write_file` | File Tools | Create or update a single file in a GitHub repository |
-| `push_multiple_files` | File Tools | Create or update multiple files in a single commit using the Git Data API |
+| `read_file` | File Tools | Read file contents. Supports `content_encoding: "base64"` for binary files, which returns `mime_type` and `size_bytes` metadata alongside content. |
+| `write_file` | File Tools | Create or update a single file. Supports `content_encoding: "base64"` for binary content. |
+| `push_multiple_files` | File Tools | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
 | `list_files` | File Tools | List files and folders at a path in a GitHub repository |
+| `patch_file` | File Tools | Apply targeted edits (replace, insert_after, insert_before, delete) to a file without sending full content. Atomic — all operations succeed or none apply. |
+| `patch_multiple_files` | File Tools | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |
+| `check_file_status` | File Tools | Return file metadata (SHA, size, last modified) without content. Use to verify if a file changed before re-reading. |
 | `create_issue` | Issue Tools | Create a new GitHub Issue in a repository |
 | `update_issue` | Issue Tools | Update an existing GitHub Issue (change status, labels, title, or body) |
 | `list_issues` | Issue Tools | List GitHub Issues in a repository with optional filters |
@@ -50,7 +53,7 @@ to GitHub repositories via the Model Context Protocol.
 | `search_files` | Search & History | Search file contents across a GitHub repository using GitHub Code Search |
 | `move_file` | Advanced File Operations | Move or rename a file. Reads from old path, writes to new path, then returns a GitHub link for the user to manually delete the original. |
 | `delete_file` | Advanced File Operations | Delete a file from a GitHub repository. This is a destructive operation — the file will be permanently removed from the specified branch. |
-| `queue_write` | Advanced File Operations | Queue a file write for batch commit. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. |
+| `queue_write` | Advanced File Operations | Queue a file write for batch commit. Supports `content_encoding: "base64"` for binary files. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. |
 | `flush_queue` | Advanced File Operations | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. |
 | `get_recent_commits` | Search & History | Return recent commit history for a branch in a GitHub repository |
 | `create_repo` | Repo Management | Create a new GitHub repository on a personal account or within an organization |

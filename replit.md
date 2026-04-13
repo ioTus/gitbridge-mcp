@@ -14,8 +14,8 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - `server/routes.ts` — MCP server setup, OAuth token endpoint, Streamable HTTP + SSE endpoints, CORS, auth middleware, tool registration
 - `server/lib/github.ts` — Octokit client, shared `validateOwnerRepo()` helper, `ownerRepoParams` schema fragment
 <!-- TOOLS:START -->
-- `server/tools/` — Individual tool implementations (21 active + 0 Phase 2 stubs)
-  - File Tools: `read_file.ts`, `write_file.ts`, `push_multiple_files.ts`, `list_files.ts`
+- `server/tools/` — Individual tool implementations (24 active + 0 Phase 2 stubs)
+  - File Tools: `read_file.ts`, `write_file.ts`, `patch_file.ts`, `patch_multiple_files.ts`, `push_multiple_files.ts`, `list_files.ts`, `check_file_status.ts` (content_encoding: base64 supported on read_file, write_file, push_multiple_files, queue_write)
   - Issue Tools: `create_issue.ts`, `update_issue.ts`, `list_issues.ts`, `add_issue_comment.ts`, `read_issue.ts`
   - Search & History: `search_files.ts`, `get_recent_commits.ts`, `get_file_diff.ts`
   - Branch Management: `create_branch.ts`, `list_branches.ts`
@@ -82,6 +82,15 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - Queue: in-memory Map keyed by `owner/repo`, last-write-wins dedup, resets on server restart
 - Project scoping: two approaches documented — Option A (one Project per repo) and Option B (multi-repo with IME.md)
 - Security: PAT scoping best practices added to README, OAuth audit completed (Issue #6)
+
+## Binary File Support (Issue #30)
+- `read_file`, `write_file`, `push_multiple_files`, `queue_write` all accept `content_encoding` parameter: `"utf-8"` (default) or `"base64"`
+- `flush_queue` carries `content_encoding` from queued entries through to blob creation
+- When `content_encoding: "base64"`, content is passed through to GitHub API without re-encoding (GitHub natively accepts base64)
+- `read_file` with `content_encoding: "base64"` returns raw base64 plus `mime_type` (via `mime-types` npm package) and `size_bytes` metadata
+- Invalid `content_encoding` values are rejected with a clear error message (defensive validation beyond schema-level enum)
+- Fully backward-compatible: all tools default to `"utf-8"`, existing text workflows unchanged
+- `push_multiple_files` supports per-file encoding, allowing mixed text and binary files in a single commit
 
 ## Agent Collaboration Workflow
 - Plan documents exchanged in `IME-docs/plans/` — numbered sequentially
