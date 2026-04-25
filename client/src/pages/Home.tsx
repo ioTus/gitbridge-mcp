@@ -26,6 +26,7 @@ import {
   RefreshCw,
   ExternalLink,
   AlertTriangle,
+  ShieldAlert,
 } from "lucide-react";
 import { SiGithub } from "react-icons/si";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,42 @@ interface PublicStatusData {
   version: string;
 }
 
+interface SessionEvent {
+  ts: string;
+  event: "SESSION_START" | "SESSION_EVICTED" | "SESSION_CLOSE" | "SESSION_REBOUND";
+  session?: string;
+  old_session?: string;
+  new_session?: string;
+  reason?: string;
+  idle_ms?: number;
+}
+
+interface TokenEvent {
+  ts: string;
+  event: "TOKEN_ISSUED" | "REFRESH_ISSUED" | "REFRESH_REJECTED" | "AUTH_REJECTED";
+  grant?: string;
+  reason?: string;
+  client?: string;
+  ip_hash?: string;
+  method?: string;
+  path?: string;
+}
+
+interface TokenEventCounts {
+  issuedLastHour: number;
+  rejectedLastHour: number;
+}
+
+interface RefreshTokenStoreHealth {
+  loaded: number;
+  droppedExpired: number;
+  droppedMalformed: number;
+  previousCount: number | null;
+  alertReasons: string[];
+  alertLevel: "ok" | "alert";
+  timestamp: string;
+}
+
 interface AuthenticatedStatusData extends PublicStatusData {
   authenticated: true;
   mode: string;
@@ -53,6 +90,13 @@ interface AuthenticatedStatusData extends PublicStatusData {
   tokenEndpoint: string;
   tools: ToolInfo[];
   activeSessions: number;
+  maxSessions: number;
+  refreshTokenCount: number;
+  recentSessionEvents: SessionEvent[];
+  sessionFilter: string | null;
+  recentTokenEvents: TokenEvent[];
+  tokenEventCounts: TokenEventCounts;
+  refreshTokenStore?: RefreshTokenStoreHealth;
 }
 
 type StatusData = PublicStatusData | AuthenticatedStatusData;
@@ -92,22 +136,31 @@ export default function Home() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [sessionFilter, setSessionFilter] = useState<string | null>(null);
 
   const isEmbedded = typeof window !== "undefined" && window.self !== window.top;
   const [devAutoLoginAttempted, setDevAutoLoginAttempted] = useState(false);
 
   const { data, isLoading, error } = useQuery<StatusData>({
-    queryKey: ["/api/status"],
+    queryKey: ["/api/status", sessionFilter],
     queryFn: async () => {
       const headers: Record<string, string> = {};
       const currentToken = getStoredToken();
       if (currentToken) {
         headers["Authorization"] = `Bearer ${currentToken}`;
       }
-      const res = await fetch("/api/status", { headers });
+      const url = sessionFilter
+        ? `/api/status?session=${encodeURIComponent(sessionFilter)}`
+        : "/api/status";
+      const res = await fetch(url, { headers });
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
       return res.json();
     },
+    refetchInterval: (query) => {
+      const d = query.state.data as AuthenticatedStatusData | undefined;
+      return d?.authenticated ? 15000 : false;
+    },
+    refetchIntervalInBackground: false,
   });
 
   const isAuthenticated = data?.authenticated === true;
@@ -151,6 +204,7 @@ export default function Home() {
     setLoginLoading(false);
     clearToken();
     setToken(null);
+    setSessionFilter(null);
     await queryClient.refetchQueries({ queryKey: ["/api/status"] });
     setLogoutLoading(false);
   }, [queryClient]);
@@ -394,7 +448,7 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card data-testid="card-mode">
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
@@ -402,7 +456,7 @@ export default function Home() {
                 <span>Mode</span>
               </div>
               <span className="font-medium text-foreground" data-testid="text-mode">
-                Multi-repo (owner/repo per tool call)
+                Multi-repo
               </span>
             </CardContent>
           </Card>
@@ -437,10 +491,410 @@ export default function Home() {
               </div>
               <span className="font-medium text-foreground" data-testid="text-sessions">
                 {authData.activeSessions}
+                <span className="text-muted-foreground font-normal"> / {authData.maxSessions}</span>
+              </span>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-refresh-tokens">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <KeyRound className="w-4 h-4" />
+                <span>Refresh Tokens</span>
+              </div>
+              <span className="font-medium text-foreground" data-testid="text-refresh-token-count">
+                {authData.refreshTokenCount}
+                <span className="text-muted-foreground font-normal"> active</span>
               </span>
             </CardContent>
           </Card>
         </div>
+
+        {authData.refreshTokenStore && (() => {
+          const health = authData.refreshTokenStore;
+          const isAlert = health.alertLevel === "alert";
+          let bootWhen = health.timestamp;
+          try {
+            bootWhen = new Date(health.timestamp).toLocaleString();
+          } catch {}
+          return (
+            <Card
+              data-testid="card-refresh-token-store"
+              className={
+                isAlert
+                  ? "border-destructive/60 bg-destructive/5"
+                  : undefined
+              }
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  {isAlert ? (
+                    <AlertTriangle
+                      className="w-4 h-4 text-destructive"
+                      data-testid="icon-refresh-store-alert"
+                    />
+                  ) : (
+                    <CheckCircle2
+                      className="w-4 h-4 text-green-600 dark:text-green-400"
+                      data-testid="icon-refresh-store-ok"
+                    />
+                  )}
+                  Refresh Token Store
+                  <Badge
+                    variant={isAlert ? "destructive" : "secondary"}
+                    className="ml-1 no-default-active-elevate text-xs"
+                    data-testid="badge-refresh-store-level"
+                  >
+                    {isAlert ? "alert" : "healthy"}
+                  </Badge>
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Startup health for the persisted OAuth refresh-token store.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Loaded</div>
+                    <div
+                      className="font-medium text-foreground"
+                      data-testid="text-refresh-store-loaded"
+                    >
+                      {health.loaded}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Previous</div>
+                    <div
+                      className="font-medium text-foreground"
+                      data-testid="text-refresh-store-previous"
+                    >
+                      {health.previousCount === null ? "—" : health.previousCount}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Dropped (expired)</div>
+                    <div
+                      className="font-medium text-foreground"
+                      data-testid="text-refresh-store-dropped-expired"
+                    >
+                      {health.droppedExpired}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Dropped (malformed)</div>
+                    <div
+                      className={
+                        health.droppedMalformed > 0
+                          ? "font-medium text-destructive"
+                          : "font-medium text-foreground"
+                      }
+                      data-testid="text-refresh-store-dropped-malformed"
+                    >
+                      {health.droppedMalformed}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground" data-testid="text-refresh-store-timestamp">
+                  Last boot: {bootWhen}
+                </div>
+                {isAlert && health.alertReasons.length > 0 && (
+                  <div
+                    className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-1"
+                    data-testid="block-refresh-store-alert-reasons"
+                  >
+                    <div className="text-xs font-medium text-destructive flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Alert reasons
+                    </div>
+                    <ul className="text-xs text-destructive/90 space-y-0.5 list-disc pl-5">
+                      {health.alertReasons.map((reason, idx) => (
+                        <li
+                          key={`${reason}-${idx}`}
+                          className="font-mono"
+                          data-testid={`text-refresh-store-alert-reason-${idx}`}
+                        >
+                          {reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
+
+        <Card data-testid="card-session-events">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+              <Link2 className="w-4 h-4" />
+              {sessionFilter ? "Session Event History" : "Recent Session Events"}
+              <Badge variant="secondary" className="ml-1 no-default-active-elevate text-xs">
+                {sessionFilter
+                  ? `${authData.recentSessionEvents.length} for this session`
+                  : `last ${authData.recentSessionEvents.length}`}
+              </Badge>
+              {sessionFilter && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 ml-auto"
+                  onClick={() => setSessionFilter(null)}
+                  data-testid="button-clear-session-filter"
+                >
+                  Clear filter
+                </Button>
+              )}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              {sessionFilter ? (
+                <>
+                  Filtered to session{" "}
+                  <code
+                    className="font-mono"
+                    data-testid="text-session-filter-value"
+                  >
+                    {sessionFilter}
+                  </code>{" "}
+                  · up to last 100 events. Source:{" "}
+                  <code className="font-mono">logs/auth.log</code>.
+                </>
+              ) : (
+                <>
+                  Auto-refreshes every 15s. Click a session id to see its full
+                  history. Source:{" "}
+                  <code className="font-mono">logs/auth.log</code>.
+                </>
+              )}
+            </p>
+          </CardHeader>
+          <CardContent>
+            {authData.recentSessionEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-no-session-events">
+                {sessionFilter
+                  ? "No events recorded for this session id."
+                  : "No session events recorded yet."}
+              </p>
+            ) : (
+              <ul className="space-y-2" data-testid="list-session-events">
+                {authData.recentSessionEvents.map((evt, idx) => {
+                  const eventColor =
+                    evt.event === "SESSION_START"
+                      ? "default"
+                      : evt.event === "SESSION_EVICTED"
+                      ? "destructive"
+                      : evt.event === "SESSION_REBOUND"
+                      ? "outline"
+                      : "secondary";
+                  const sessionShort =
+                    evt.event === "SESSION_REBOUND" && evt.old_session && evt.new_session
+                      ? `${evt.old_session.slice(0, 8)} → ${evt.new_session.slice(0, 8)}`
+                      : evt.session
+                      ? evt.session.slice(0, 8)
+                      : "—";
+                  const idleSec =
+                    typeof evt.idle_ms === "number" ? Math.round(evt.idle_ms / 1000) : null;
+                  let when = evt.ts;
+                  try {
+                    when = new Date(evt.ts).toLocaleString();
+                  } catch {}
+                  return (
+                    <li
+                      key={`${evt.ts}-${idx}`}
+                      className="flex items-start gap-3 text-sm border-b border-border last:border-0 pb-2 last:pb-0"
+                      data-testid={`row-session-event-${idx}`}
+                    >
+                      <Badge
+                        variant={eventColor}
+                        className="no-default-active-elevate text-xs font-mono shrink-0"
+                        data-testid={`badge-event-${idx}`}
+                      >
+                        {evt.event}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {evt.session ? (
+                            <button
+                              type="button"
+                              onClick={() => setSessionFilter(evt.session!)}
+                              className="text-xs font-mono text-muted-foreground underline-offset-2 hover:underline hover:text-foreground disabled:no-underline disabled:cursor-default"
+                              disabled={sessionFilter === evt.session}
+                              title={
+                                sessionFilter === evt.session
+                                  ? evt.session
+                                  : `Filter to session ${evt.session}`
+                              }
+                              data-testid={`button-event-session-${idx}`}
+                            >
+                              {sessionShort}
+                            </button>
+                          ) : (
+                            <code
+                              className="text-xs font-mono text-muted-foreground"
+                              data-testid={`text-event-session-${idx}`}
+                            >
+                              {sessionShort}
+                            </code>
+                          )}
+                          {evt.reason && (
+                            <span
+                              className="text-xs text-muted-foreground"
+                              data-testid={`text-event-reason-${idx}`}
+                            >
+                              · {evt.reason}
+                            </span>
+                          )}
+                          {idleSec !== null && (
+                            <span className="text-xs text-muted-foreground">
+                              · idle {idleSec}s
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          className="text-xs text-muted-foreground mt-0.5"
+                          data-testid={`text-event-ts-${idx}`}
+                        >
+                          {when}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-token-events">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4" />
+              Recent OAuth Token Events
+              <Badge variant="secondary" className="ml-1 no-default-active-elevate text-xs">
+                last {authData.recentTokenEvents.length}
+              </Badge>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Auto-refreshes every 15s. Source: <code className="font-mono">logs/auth.log</code>.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                className="rounded-md border border-border p-3"
+                data-testid="card-token-issued-counter"
+              >
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Issued (last hour)</span>
+                </div>
+                <span
+                  className="font-medium text-foreground text-lg"
+                  data-testid="text-token-issued-count"
+                >
+                  {authData.tokenEventCounts.issuedLastHour}
+                </span>
+              </div>
+              <div
+                className="rounded-md border border-border p-3"
+                data-testid="card-token-rejected-counter"
+              >
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>Rejected (last hour)</span>
+                </div>
+                <span
+                  className={`font-medium text-lg ${
+                    authData.tokenEventCounts.rejectedLastHour > 0
+                      ? "text-destructive"
+                      : "text-foreground"
+                  }`}
+                  data-testid="text-token-rejected-count"
+                >
+                  {authData.tokenEventCounts.rejectedLastHour}
+                </span>
+              </div>
+            </div>
+
+            {authData.recentTokenEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-no-token-events">
+                No OAuth token events recorded yet.
+              </p>
+            ) : (
+              <ul className="space-y-2" data-testid="list-token-events">
+                {authData.recentTokenEvents.map((evt, idx) => {
+                  const isRejected =
+                    evt.event === "REFRESH_REJECTED" || evt.event === "AUTH_REJECTED";
+                  const eventColor = isRejected ? "destructive" : "default";
+                  const detail = evt.grant || evt.reason || "—";
+                  const clientShort = evt.client ? evt.client.slice(0, 12) : null;
+                  const ipShort = evt.ip_hash ? evt.ip_hash.slice(0, 8) : null;
+                  let when = evt.ts;
+                  try {
+                    when = new Date(evt.ts).toLocaleString();
+                  } catch {}
+                  return (
+                    <li
+                      key={`${evt.ts}-${idx}`}
+                      className="flex items-start gap-3 text-sm border-b border-border last:border-0 pb-2 last:pb-0"
+                      data-testid={`row-token-event-${idx}`}
+                    >
+                      <Badge
+                        variant={eventColor}
+                        className="no-default-active-elevate text-xs font-mono shrink-0"
+                        data-testid={`badge-token-event-${idx}`}
+                      >
+                        {evt.event}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className="text-xs text-muted-foreground"
+                            data-testid={`text-token-event-detail-${idx}`}
+                          >
+                            {detail}
+                          </span>
+                          {clientShort && (
+                            <code
+                              className="text-xs font-mono text-muted-foreground"
+                              data-testid={`text-token-event-client-${idx}`}
+                            >
+                              · client {clientShort}
+                            </code>
+                          )}
+                          {ipShort && (
+                            <code
+                              className="text-xs font-mono text-muted-foreground"
+                              data-testid={`text-token-event-ip-${idx}`}
+                            >
+                              · ip {ipShort}
+                            </code>
+                          )}
+                          {evt.path && (
+                            <span
+                              className="text-xs text-muted-foreground"
+                              data-testid={`text-token-event-path-${idx}`}
+                            >
+                              · {evt.method ? `${evt.method} ` : ""}
+                              {evt.path}
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          className="text-xs text-muted-foreground mt-0.5"
+                          data-testid={`text-token-event-ts-${idx}`}
+                        >
+                          {when}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
 
         <Card data-testid="card-auth">
           <CardContent className="pt-5 pb-4">

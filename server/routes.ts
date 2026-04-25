@@ -30,9 +30,21 @@ import { listBranches } from "./tools/list_branches.js";
 import { getFileDiff } from "./tools/get_file_diff.js";
 import { getProjectBoard } from "./tools/get_project_board.js";
 import { moveIssueToColumn } from "./tools/move_issue_to_column.js";
+import { patchFile } from "./tools/patch_file.js";
+import { patchMultipleFiles } from "./tools/patch_multiple_files.js";
+import { checkFileStatus } from "./tools/check_file_status.js";
 import { allToolSchemas } from "./tools/registry.js";
 import { checkGithubStatus, getLastSuccessfulOperation, getUptimeSeconds } from "./lib/health.js";
-import { persistLog, persistLogWithIp } from "./lib/persistent-log.js";
+import { persistLog, persistLogWithIp, getRecentSessionEvents, getEventsForSession, getRecentTokenEvents, getTokenEventCounts } from "./lib/persistent-log.js";
+import {
+  initRefreshTokenStore,
+  setRefreshToken,
+  getRefreshToken,
+  deleteRefreshToken,
+  sweepExpiredRefreshTokens,
+  getRefreshTokenCount,
+  getRefreshTokenStartupHealth,
+} from "./lib/refresh-token-store.js";
 
 const allTools = allToolSchemas;
 
@@ -58,6 +70,9 @@ const toolHandlers: Record<string, (args: any) => Promise<any>> = {
   get_file_diff: getFileDiff,
   get_project_board: getProjectBoard,
   move_issue_to_column: moveIssueToColumn,
+  patch_file: patchFile,
+  patch_multiple_files: patchMultipleFiles,
+  check_file_status: checkFileStatus,
 };
 
 function createMcpServer(): Server {
@@ -136,12 +151,9 @@ const authCodes: Map<string, {
   codeChallengeMethod?: string;
 }> = new Map();
 
-const refreshTokens: Map<string, {
-  clientId: string;
-  expiresAt: number;
-}> = new Map();
-
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+initRefreshTokenStore(OAUTH_CLIENT_SECRET!);
 
 console.log(`[${new Date().toISOString()}] [MCP] OAuth 2.0 authentication is ENABLED`);
 console.log(`[${new Date().toISOString()}] [MCP] Authorization endpoint: /authorize`);
@@ -230,8 +242,80 @@ function requireAuth(req: Request, res: Response): boolean {
 
 const sseTransports: Record<string, SSEServerTransport> = {};
 const streamableTransports: Record<string, StreamableHTTPServerTransport> = {};
+const sessionActivity: Map<string, number> = new Map();
 
 const MAX_SESSIONS = Math.max(1, parseInt(process.env.MAX_SESSIONS || "50", 10) || 50);
+const SESSION_IDLE_TIMEOUT_MS = Math.max(
+  60 * 1000,
+  parseInt(process.env.SESSION_IDLE_TIMEOUT_MS || String(8 * 60 * 60 * 1000), 10) || 8 * 60 * 60 * 1000,
+);
+const SESSION_CLEANUP_INTERVAL_MS = Math.max(
+  10 * 1000,
+  parseInt(process.env.SESSION_CLEANUP_INTERVAL_MS || String(30 * 60 * 1000), 10) || 30 * 60 * 1000,
+);
+
+function touchSession(sessionId: string | undefined): void {
+  if (sessionId) sessionActivity.set(sessionId, Date.now());
+}
+
+function evictSession(sessionId: string, reason: "idle_timeout" | "lru_cap"): void {
+  const lastActive = sessionActivity.get(sessionId) ?? Date.now();
+  const idleMs = Date.now() - lastActive;
+  const streamable = streamableTransports[sessionId];
+  const sse = sseTransports[sessionId];
+  delete streamableTransports[sessionId];
+  delete sseTransports[sessionId];
+  sessionActivity.delete(sessionId);
+  console.log(`[${new Date().toISOString()}] [MCP] Session evicted (${reason}): ${sessionId} (idle ${Math.round(idleMs / 1000)}s)`);
+  persistLog({ event: "SESSION_EVICTED", session: sessionId, reason, idle_ms: idleMs });
+  try {
+    if (streamable) void streamable.close?.();
+  } catch (err) {
+    console.error(`[MCP] Error closing evicted streamable transport ${sessionId}:`, err);
+  }
+  try {
+    if (sse) void sse.close?.();
+  } catch (err) {
+    console.error(`[MCP] Error closing evicted SSE transport ${sessionId}:`, err);
+  }
+}
+
+function findOldestSessionId(): string | undefined {
+  let oldestId: string | undefined;
+  let oldestTs = Infinity;
+  for (const [sid, ts] of sessionActivity) {
+    if (ts < oldestTs) {
+      oldestTs = ts;
+      oldestId = sid;
+    }
+  }
+  if (!oldestId) {
+    oldestId = Object.keys(streamableTransports)[0] ?? Object.keys(sseTransports)[0];
+  }
+  return oldestId;
+}
+
+function ensureCapacityForNewSession(): void {
+  while (totalSessions() >= MAX_SESSIONS) {
+    const victim = findOldestSessionId();
+    if (!victim) break;
+    evictSession(victim, "lru_cap");
+  }
+}
+
+setInterval(() => {
+  const now = Date.now();
+  const cutoff = now - SESSION_IDLE_TIMEOUT_MS;
+  const stale: string[] = [];
+  for (const sid of [...Object.keys(streamableTransports), ...Object.keys(sseTransports)]) {
+    const last = sessionActivity.get(sid) ?? now;
+    if (last < cutoff) stale.push(sid);
+  }
+  for (const sid of stale) evictSession(sid, "idle_timeout");
+  if (stale.length > 0) {
+    console.log(`[${new Date().toISOString()}] [MCP] Idle sweep evicted ${stale.length} session(s); ${totalSessions()} active`);
+  }
+}, SESSION_CLEANUP_INTERVAL_MS);
 
 const tokenRateLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -250,13 +334,7 @@ setInterval(() => {
       sweptCodes++;
     }
   }
-  let sweptRefresh = 0;
-  for (const [token, data] of refreshTokens) {
-    if (data.expiresAt < now) {
-      refreshTokens.delete(token);
-      sweptRefresh++;
-    }
-  }
+  const sweptRefresh = sweepExpiredRefreshTokens();
   if (sweptCodes > 0 || sweptRefresh > 0) {
     console.log(`[${new Date().toISOString()}] [OAuth] Swept ${sweptCodes} expired auth code(s), ${sweptRefresh} expired refresh token(s)`);
   }
@@ -459,7 +537,7 @@ export async function registerRoutes(
         return;
       }
 
-      const storedRefresh = refreshTokens.get(incomingRefreshToken);
+      const storedRefresh = getRefreshToken(incomingRefreshToken);
       if (!storedRefresh) {
         console.log(`[${new Date().toISOString()}] [OAuth] Refresh token not found (client: ${clientId})`);
         persistLogWithIp({ event: "REFRESH_REJECTED", reason: "not_found", client: clientId }, req.ip || "");
@@ -468,7 +546,11 @@ export async function registerRoutes(
       }
 
       if (storedRefresh.expiresAt < Date.now()) {
-        refreshTokens.delete(incomingRefreshToken);
+        try {
+          deleteRefreshToken(incomingRefreshToken);
+        } catch (err) {
+          console.error(`[${new Date().toISOString()}] [OAuth] Failed to revoke expired refresh token (non-fatal — token is already invalid):`, err);
+        }
         console.log(`[${new Date().toISOString()}] [OAuth] Refresh token expired (client: ${clientId})`);
         persistLogWithIp({ event: "REFRESH_REJECTED", reason: "expired", client: clientId }, req.ip || "");
         res.status(400).json({ error: "invalid_grant", error_description: "Refresh token has expired" });
@@ -476,14 +558,28 @@ export async function registerRoutes(
       }
 
       if (storedRefresh.clientId !== clientId) {
-        refreshTokens.delete(incomingRefreshToken);
+        try {
+          deleteRefreshToken(incomingRefreshToken);
+        } catch (err) {
+          console.error(`[${new Date().toISOString()}] [OAuth] Failed to revoke mismatched refresh token (non-fatal — token cannot match a different client):`, err);
+        }
         console.log(`[${new Date().toISOString()}] [OAuth] Refresh token client mismatch (expected: ${storedRefresh.clientId}, got: ${clientId})`);
         persistLogWithIp({ event: "REFRESH_REJECTED", reason: "client_mismatch", client: clientId }, req.ip || "");
         res.status(400).json({ error: "invalid_grant", error_description: "Refresh token was issued to a different client" });
         return;
       }
 
-      refreshTokens.delete(incomingRefreshToken);
+      // Fail-closed: must durably revoke the old refresh token BEFORE issuing
+      // a rotated replacement. Otherwise a crash between rotation and persist
+      // would leave the old token valid after restart, breaking rotation.
+      try {
+        deleteRefreshToken(incomingRefreshToken);
+      } catch (err) {
+        console.error(`[${new Date().toISOString()}] [OAuth] Failed to durably revoke refresh token during rotation; refusing to issue replacement:`, err);
+        persistLogWithIp({ event: "REFRESH_REJECTED", reason: "revoke_persistence_failure", client: clientId }, req.ip || "");
+        res.status(500).json({ error: "server_error", error_description: "Failed to persist token revocation" });
+        return;
+      }
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -492,10 +588,21 @@ export async function registerRoutes(
     const accessToken = signJwt(payload, OAUTH_CLIENT_SECRET!);
 
     const newRefreshToken = randomUUID();
-    refreshTokens.set(newRefreshToken, {
-      clientId: clientId!,
-      expiresAt: Date.now() + REFRESH_TOKEN_TTL_MS,
-    });
+    // Fail-closed: must durably persist the new refresh token BEFORE handing
+    // it to the client. Otherwise a crash before persist would give the
+    // client a token that is invalid after restart — exactly the bug we are
+    // trying to fix.
+    try {
+      setRefreshToken(newRefreshToken, {
+        clientId: clientId!,
+        expiresAt: Date.now() + REFRESH_TOKEN_TTL_MS,
+      });
+    } catch (err) {
+      console.error(`[${new Date().toISOString()}] [OAuth] Failed to persist new refresh token; aborting issuance:`, err);
+      persistLogWithIp({ event: "REFRESH_REJECTED", reason: "persistence_failure", client: clientId }, req.ip || "");
+      res.status(500).json({ error: "server_error", error_description: "Failed to persist refresh token" });
+      return;
+    }
 
     console.log(`[${new Date().toISOString()}] [OAuth] Access token issued for client: ${clientId} (grant: ${grantType})`);
     if (grantType === "refresh_token") {
@@ -549,6 +656,23 @@ export async function registerRoutes(
       return;
     }
 
+    const rawSession = req.query.session;
+    let sessionFilter: string | null = null;
+    if (rawSession !== undefined) {
+      if (typeof rawSession !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(rawSession)) {
+        res.status(400).json({
+          error: "invalid_request",
+          error_description: "session must be 1–128 chars of [A-Za-z0-9_-]",
+        });
+        return;
+      }
+      sessionFilter = rawSession;
+    }
+
+    const recentSessionEvents = sessionFilter
+      ? getEventsForSession(sessionFilter, 100)
+      : getRecentSessionEvents(10);
+
     res.json({
       ...publicResponse,
       authenticated: true,
@@ -565,6 +689,12 @@ export async function registerRoutes(
       })),
       activeSessions: totalSessions(),
       maxSessions: MAX_SESSIONS,
+      refreshTokenCount: getRefreshTokenCount(),
+      recentSessionEvents,
+      sessionFilter,
+      refreshTokenStore: getRefreshTokenStartupHealth(),
+      recentTokenEvents: getRecentTokenEvents(10),
+      tokenEventCounts: getTokenEventCounts(),
     });
   });
 
@@ -605,30 +735,20 @@ export async function registerRoutes(
     if (sessionId && streamableTransports[sessionId]) {
       console.log(`[${new Date().toISOString()}] [MCP] Streamable HTTP POST (existing session: ${sessionId})`);
       const transport = streamableTransports[sessionId];
+      touchSession(sessionId);
       await transport.handleRequest(req, res, req.body);
       return;
     }
 
-    if (sessionId && !streamableTransports[sessionId]) {
-      res.status(404).json({
-        jsonrpc: "2.0",
-        error: { code: -32000, message: "Session not found. Send an initialize request first." },
-        id: null,
-      });
-      return;
-    }
+    const isRebind = Boolean(sessionId && !streamableTransports[sessionId]);
 
-    if (totalSessions() >= MAX_SESSIONS) {
-      console.log(`[${new Date().toISOString()}] [MCP] Session cap reached (${MAX_SESSIONS}), rejecting new Streamable HTTP session`);
-      res.status(503).json({
-        jsonrpc: "2.0",
-        error: { code: -32000, message: `Server session limit reached (${MAX_SESSIONS}). Try again later.` },
-        id: null,
-      });
-      return;
-    }
+    ensureCapacityForNewSession();
 
-    console.log(`[${new Date().toISOString()}] [MCP] Streamable HTTP POST (new session)`);
+    if (isRebind) {
+      console.log(`[${new Date().toISOString()}] [MCP] Streamable HTTP POST (rebinding unknown session: ${sessionId})`);
+    } else {
+      console.log(`[${new Date().toISOString()}] [MCP] Streamable HTTP POST (new session)`);
+    }
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
@@ -642,6 +762,7 @@ export async function registerRoutes(
         console.log(`[${new Date().toISOString()}] [MCP] Streamable session closed: ${sid}`);
         persistLog({ event: "SESSION_CLOSE", session: sid });
         delete streamableTransports[sid];
+        sessionActivity.delete(sid);
       }
     };
 
@@ -650,8 +771,18 @@ export async function registerRoutes(
 
     if (transport.sessionId) {
       streamableTransports[transport.sessionId] = transport;
+      touchSession(transport.sessionId);
       console.log(`[${new Date().toISOString()}] [MCP] Streamable session started: ${transport.sessionId}`);
       persistLog({ event: "SESSION_START", session: transport.sessionId });
+      if (isRebind && sessionId) {
+        console.log(`[${new Date().toISOString()}] [MCP] Session rebound: ${sessionId} → ${transport.sessionId}`);
+        persistLog({
+          event: "SESSION_REBOUND",
+          old_session: sessionId,
+          new_session: transport.sessionId,
+          reason: "unknown_session_with_valid_token",
+        });
+      }
     }
   });
 
@@ -671,6 +802,7 @@ export async function registerRoutes(
 
     console.log(`[${new Date().toISOString()}] [MCP] Streamable HTTP GET (SSE stream) for session: ${sessionId}`);
     const transport = streamableTransports[sessionId];
+    touchSession(sessionId);
     await transport.handleRequest(req, res);
   });
 
@@ -708,22 +840,20 @@ export async function registerRoutes(
     setCorsHeaders(res, req.headers.origin);
     if (!requireAuth(req, res)) return;
 
-    if (totalSessions() >= MAX_SESSIONS) {
-      console.log(`[${new Date().toISOString()}] [MCP] Session cap reached (${MAX_SESSIONS}), rejecting new SSE session`);
-      res.status(503).json({ error: "service_unavailable", error_description: `Server session limit reached (${MAX_SESSIONS}). Try again later.` });
-      return;
-    }
+    ensureCapacityForNewSession();
 
     console.log(`[${new Date().toISOString()}] [MCP] New SSE connection request`);
 
     const mcpServer = createMcpServer();
     const transport = new SSEServerTransport("/messages", res);
     sseTransports[transport.sessionId] = transport;
+    touchSession(transport.sessionId);
 
     transport.onclose = () => {
       console.log(`[${new Date().toISOString()}] [MCP] SSE session closed: ${transport.sessionId}`);
       persistLog({ event: "SESSION_CLOSE", session: transport.sessionId });
       delete sseTransports[transport.sessionId];
+      sessionActivity.delete(transport.sessionId);
     };
 
     await mcpServer.connect(transport);
