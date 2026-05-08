@@ -235,6 +235,35 @@ overhead — the convention exists to prevent recurrence.
 Include the plan doc reference when applicable:
 `[feat] 002-mcp-v2-build-spec.md — implement multi-repo mode`
 
+### Model attribution
+
+Every commit and issue comment must include a model attribution
+trailer. As AI-assisted codebases age, the model version and
+training cutoff that produced a given section of code becomes
+audit-relevant — teams use this information to triage which
+areas are candidates for review or refactoring as newer models
+become available.
+
+**Commit message format:**
+
+```
+[feat] add search_files tool
+
+Agent: Replit — {model-name}, cutoff {month} {year}
+```
+
+**Issue comment format:**
+
+```
+**[Replit]:** ...body of comment...
+
+---
+Agent: {model-name}, cutoff {month} {year}
+```
+
+Populate `{model-name}` and `{cutoff}` with your own model identity
+at time of authorship.
+
 ---
 
 *Last updated: 2026-03-18 (renamed from AGENTS-replit.md — Issue #21)*
