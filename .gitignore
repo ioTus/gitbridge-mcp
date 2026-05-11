@@ -7,3 +7,9 @@ vite.config.ts.*
 .env
 .dev-credentials.json
 logs/
+logs/auth.log
+logs/auth.log.1
+logs/tools.log
+logs/tools.log.1
+logs/refresh-tokens.jsonl
+logs/refresh-tokens.state

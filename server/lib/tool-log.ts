@@ -67,7 +67,7 @@ export function persistToolCall(input: PersistToolCallInput): void {
       tool: input.tool,
       outcome: input.outcome,
       duration_ms: input.duration_ms,
-      args: redactToolArgs(input.args),
+      args: redactToolArgs(input.tool, input.args),
     };
     if (input.session) entry.session = input.session;
     if (input.request_id) entry.request_id = input.request_id;

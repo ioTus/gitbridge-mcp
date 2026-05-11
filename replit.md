@@ -86,12 +86,14 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 ## Tool-Call Logging (Issue #30)
 - Every MCP tool invocation is recorded to `logs/tools.log` (JSON Lines, 5MB cap, one rotated backup `tools.log.1`, dir 0700, file 0600, in `.gitignore`, not web-accessible). Same security posture as `auth.log`.
 - Each entry: `ts`, `tool`, `outcome` (`success`/`error`), `duration_ms`, `args` (redacted), and on error a short `error_reason` and optional `status_code`. Response bodies are never persisted.
-- **Redaction policy** (`server/lib/tool-log-redaction.ts`, applied at the dispatch wrapper — individual tools never call the logger directly):
-  - **Allow-list kept as raw values:** `owner`, `repo`, `branch`, `path`, `from_path`, `to_path`, `sha`, `ref`, `from_ref`, `base`, `head`, `issue_number`, `column_id`, `project_number`, `query`, `state`, `labels`, `limit`, `content_encoding`, `private`, `name`.
-  - **Always replaced with `{length, sha256_prefix}` digest:** `content`, `body`, `title`, `message`, `description`. Lets an operator answer "did the same content go in twice?" without reading the content.
-  - **Always dropped:** any field name matching `/token|secret|password|key|auth/i`, any field over 4 KB, any field not on the allow-list. `files: [...]` arrays are reduced to a length-only marker (`[array length=N]`) so file payloads never leak through batch tools.
+- Each entry also captures `session` (MCP transport session id) and `request_id` (JSON-RPC request id) so a tool failure can be traced back to the exact MCP session/request in `auth.log`.
+- **Redaction policy** is **per-tool allow-listed** in `server/lib/tool-log-redaction.ts` (applied at the dispatch wrapper — individual tools never call the logger directly). Default for any tool/field not on the list is **drop**. Each tool declares two sets:
+  - `keep`: argument names persisted as raw values (e.g. `read_file` keeps `owner`, `repo`, `path`, `ref`, `content_encoding`).
+  - `digest`: argument names replaced with `{length, sha256_prefix}` (e.g. `write_file` digests `content`, `message`; `create_issue` digests `title`, `body`).
+  - Allow-lists are exhaustively defined for all 24 active tools; an unknown tool name returns `{}`.
+- **Defence in depth (always applied on top of the per-tool list):** field names matching `/token|secret|password|key|auth/i` are dropped; values larger than 4 KB are dropped; response bodies are never persisted.
 - Dashboard surfaces the last 10 tool calls in a "Recent Tool Activity" card on `/api/status` (manual Refresh only, no polling — same model as the other event cards).
-- Unit test: `npx tsx scripts/test-tool-log-redaction.ts` verifies the redactor strips `content`/`body`/`title`/`message`/`description`/`token`/`secret`/`password`/`authorization`/unknown fields and a 10 KB payload.
+- Unit test: `npx tsx scripts/test-tool-log-redaction.ts` verifies per-tool allow-lists, digesting of sensitive fields, dropping of secret-pattern fields, the 4 KB cap, the unknown-tool default-drop, and that every registered tool has an allow-list.
 
 ## V2 Changes
 - Multi-repo mode: all tools accept `owner` and `repo` params (no hardcoded env vars)

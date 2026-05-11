@@ -92,10 +92,16 @@ function createMcpServer(): Server {
     };
   });
 
-  mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+  mcpServer.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
     const handler = toolHandlers[name];
     const start = Date.now();
+    const sessionId = (extra as any)?.sessionId as string | undefined;
+    const requestIdRaw = (extra as any)?.requestId;
+    const requestId =
+      requestIdRaw === undefined || requestIdRaw === null
+        ? undefined
+        : String(requestIdRaw);
 
     if (!handler) {
       persistToolCall({
@@ -104,6 +110,8 @@ function createMcpServer(): Server {
         outcome: "error",
         duration_ms: 0,
         error_reason: "unknown_tool",
+        session: sessionId,
+        request_id: requestId,
       });
       return {
         content: [{ type: "text", text: `Unknown tool: ${name}` }],
@@ -125,6 +133,8 @@ function createMcpServer(): Server {
         outcome: isError ? "error" : "success",
         duration_ms: duration,
         error_reason: errorReason,
+        session: sessionId,
+        request_id: requestId,
       });
       return result;
     } catch (error: any) {
@@ -143,6 +153,8 @@ function createMcpServer(): Server {
         duration_ms: duration,
         error_reason: (error?.message ? String(error.message) : "unknown_error").slice(0, 200),
         status_code: statusCode,
+        session: sessionId,
+        request_id: requestId,
       });
       return {
         content: [{ type: "text", text: `Internal error in tool '${name}': ${error.message}` }],
