@@ -95,6 +95,17 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - Dashboard surfaces the last 10 tool calls in a "Recent Tool Activity" card on `/api/status` (manual Refresh only, no polling — same model as the other event cards).
 - Unit test: `npx tsx scripts/test-tool-log-redaction.ts` verifies per-tool allow-lists, digesting of sensitive fields, dropping of secret-pattern fields, the 4 KB cap, the unknown-tool default-drop, and that every registered tool has an allow-list.
 
+## Log surfaces
+Two log streams answer different questions. Reach for the right one first:
+
+| Surface | What it captures | What it does NOT capture | Retention | How to read |
+|---------|------------------|--------------------------|-----------|-------------|
+| **Replit deployment buffer** | Every HTTP request to the deployed server (line per request, includes `/mcp`, `/sse`, `/oauth/token`, `/api/*`) | OAuth/session lifecycle context, tool-call args/outcomes | ~45 min, in-memory | Replit Deployment panel → Logs |
+| **`logs/auth.log`** (queryable via `/api/auth-log`) | OAuth and session lifecycle events: `SERVER_START`, `TOKEN_ISSUED`, `REFRESH_ISSUED`, `REFRESH_REJECTED`, `AUTH_REJECTED`, `SESSION_START`, `SESSION_CLOSE`, `SESSION_EVICTED`, `SESSION_REBOUND`, refresh-token health | Raw HTTP request bodies, per-tool-call detail | Persists across restarts/redeploys (5MB cap, one rotation) | `GET /api/auth-log?since=<ISO>&events=<csv>` (Bearer JWT) |
+| **`logs/tools.log`** (queryable via `/api/tool-log`) | Per-MCP-tool-call records: tool name, outcome, duration, redacted args, session/request id | OAuth events, response bodies | Persists across restarts/redeploys (5MB cap, one rotation) | `GET /api/tool-log?since=<ISO>&tools=<csv>&outcome=<success\|error>` (Bearer JWT) |
+
+For `/mcp` connector failures, **`/api/auth-log` is almost always the right starting point** — see `IME-docs/runbooks/gitbridge-connector-failures.md` for the triage checklist.
+
 ## V2 Changes
 - Multi-repo mode: all tools accept `owner` and `repo` params (no hardcoded env vars)
 - Write confirmation headers: `✅ Writing to: {owner}/{repo}` prefix on write tool responses

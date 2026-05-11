@@ -26,6 +26,13 @@ to GitHub repositories via the Model Context Protocol.
 | IME-AGENTS-replit.md | Replit Agent workspace boundaries |
 | IME-docs/plans/ | Plan documents |
 | IME-docs/decisions/ | Decision log |
+| IME-docs/runbooks/ | Operational runbooks |
+
+---
+
+## Troubleshooting
+
+If a user reports "GitBridge tools stopped working" / "the connector is broken" / Claude shows an "additional permissions" popup, **read [`IME-docs/runbooks/gitbridge-connector-failures.md`](IME-docs/runbooks/gitbridge-connector-failures.md) first** and run the triage checklist before proposing any code change.
 
 ---
 
