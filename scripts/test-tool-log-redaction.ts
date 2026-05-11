@@ -53,6 +53,14 @@ assert(!wJson.includes("raw commit message"), "raw commit_message not in output"
 assert(!wJson.includes("ghp_supersecret"), "raw token not in output");
 assert(!wJson.includes(bigString), "big payload not in output");
 
+console.log("\nTest: stray raw 'message' key (legacy/unknown field) is dropped");
+const stray = redactToolArgs("write_file", {
+  owner: "o", repo: "r", path: "p", content: "x",
+  message: "raw legacy message that should never be persisted",
+});
+assert(!("message" in stray), "raw 'message' key dropped (not in any allow-list)");
+assert(!JSON.stringify(stray).includes("raw legacy message"), "raw 'message' value not in output");
+
 console.log("\nTest: 4KB cap applies to digest fields too");
 const oversizedDigest = redactToolArgs("write_file", {
   owner: "o",
