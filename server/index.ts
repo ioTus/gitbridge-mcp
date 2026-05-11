@@ -3,6 +3,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { persistLog } from "./lib/persistent-log";
+import { getRefreshTokenStartupHealth } from "./lib/refresh-token-store";
+import { notifyRefreshTokenAlert } from "./lib/alert-notifier";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -50,7 +52,10 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api") || path === "/mcp" || path === "/sse" || path === "/messages" || path === "/oauth/token") {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+      const includeBody =
+        capturedJsonResponse &&
+        (res.statusCode >= 400 || path === "/oauth/token");
+      if (includeBody) {
         const SENSITIVE_PATHS = ["/oauth/token", "/api/dev-credentials"];
         if (SENSITIVE_PATHS.includes(path)) {
           const redacted = { ...capturedJsonResponse };
@@ -72,6 +77,16 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  const startupHealth = getRefreshTokenStartupHealth();
+  if (startupHealth && startupHealth.alertLevel === "alert") {
+    void notifyRefreshTokenAlert(startupHealth).catch((err) => {
+      console.error(
+        `[${new Date().toISOString()}] [AlertNotifier] Unhandled error dispatching refresh-token alert (non-fatal):`,
+        err,
+      );
+    });
+  }
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

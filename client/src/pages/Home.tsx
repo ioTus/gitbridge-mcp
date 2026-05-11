@@ -158,7 +158,7 @@ export default function Home() {
     },
     refetchInterval: (query) => {
       const d = query.state.data as AuthenticatedStatusData | undefined;
-      return d?.authenticated ? 15000 : false;
+      return d?.authenticated ? 60000 : false;
     },
     refetchIntervalInBackground: false,
   });

@@ -302,4 +302,34 @@ export function getEventsForSession(
   return events;
 }
 
+export function getEventsInRange(
+  sinceMs: number,
+  untilMs: number = Date.now(),
+  eventTypes?: Set<PersistentLogEvent>,
+  limit: number = 5000,
+): PersistentLogEntry[] {
+  const lines: string[] = [];
+  if (fs.existsSync(LOG_FILE_BACKUP)) {
+    lines.push(...readAllLines(LOG_FILE_BACKUP));
+  }
+  if (fs.existsSync(LOG_FILE)) {
+    lines.push(...readAllLines(LOG_FILE));
+  }
+
+  const out: PersistentLogEntry[] = [];
+  for (let i = 0; i < lines.length && out.length < limit; i++) {
+    try {
+      const obj = JSON.parse(lines[i]) as PersistentLogEntry;
+      if (!obj || !obj.event || !obj.ts) continue;
+      const ts = Date.parse(obj.ts);
+      if (Number.isNaN(ts)) continue;
+      if (ts < sinceMs || ts > untilMs) continue;
+      if (eventTypes && !eventTypes.has(obj.event)) continue;
+      out.push(obj);
+    } catch {
+    }
+  }
+  return out;
+}
+
 ensureLogDir();

@@ -35,7 +35,7 @@ import { patchMultipleFiles } from "./tools/patch_multiple_files.js";
 import { checkFileStatus } from "./tools/check_file_status.js";
 import { allToolSchemas } from "./tools/registry.js";
 import { checkGithubStatus, getLastSuccessfulOperation, getUptimeSeconds } from "./lib/health.js";
-import { persistLog, persistLogWithIp, getRecentSessionEvents, getEventsForSession, getRecentTokenEvents, getTokenEventCounts } from "./lib/persistent-log.js";
+import { persistLog, persistLogWithIp, getRecentSessionEvents, getEventsForSession, getRecentTokenEvents, getTokenEventCounts, getEventsInRange, type PersistentLogEvent } from "./lib/persistent-log.js";
 import {
   initRefreshTokenStore,
   setRefreshToken,
@@ -695,6 +695,61 @@ export async function registerRoutes(
       refreshTokenStore: getRefreshTokenStartupHealth(),
       recentTokenEvents: getRecentTokenEvents(10),
       tokenEventCounts: getTokenEventCounts(),
+    });
+  });
+
+  app.get("/api/auth-log", (req: Request, res: Response) => {
+    if (!requireAuth(req, res)) return;
+
+    const sinceRaw = req.query.since;
+    const untilRaw = req.query.until;
+    const eventsRaw = req.query.events;
+    const limitRaw = req.query.limit;
+
+    const sinceMs = typeof sinceRaw === "string" ? Date.parse(sinceRaw) : NaN;
+    if (Number.isNaN(sinceMs)) {
+      res.status(400).json({
+        error: "invalid_request",
+        error_description: "since must be an ISO-8601 timestamp",
+      });
+      return;
+    }
+
+    let untilMs = Date.now();
+    if (typeof untilRaw === "string" && untilRaw.length > 0) {
+      const parsed = Date.parse(untilRaw);
+      if (Number.isNaN(parsed)) {
+        res.status(400).json({
+          error: "invalid_request",
+          error_description: "until must be an ISO-8601 timestamp",
+        });
+        return;
+      }
+      untilMs = parsed;
+    }
+
+    let eventTypes: Set<PersistentLogEvent> | undefined;
+    if (typeof eventsRaw === "string" && eventsRaw.length > 0) {
+      eventTypes = new Set(
+        eventsRaw.split(",").map((s) => s.trim()).filter(Boolean) as PersistentLogEvent[],
+      );
+    }
+
+    let limit = 5000;
+    if (typeof limitRaw === "string") {
+      const parsed = parseInt(limitRaw, 10);
+      if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 10000) {
+        limit = parsed;
+      }
+    }
+
+    const entries = getEventsInRange(sinceMs, untilMs, eventTypes, limit);
+    res.json({
+      since: new Date(sinceMs).toISOString(),
+      until: new Date(untilMs).toISOString(),
+      count: entries.length,
+      truncated: entries.length === limit,
+      entries,
     });
   });
 
