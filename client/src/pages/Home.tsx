@@ -81,6 +81,18 @@ interface RefreshTokenStoreHealth {
   timestamp: string;
 }
 
+interface ToolCallEntry {
+  ts: string;
+  tool: string;
+  outcome: "success" | "error";
+  duration_ms: number;
+  args?: Record<string, unknown>;
+  session?: string;
+  request_id?: string;
+  error_reason?: string;
+  status_code?: number;
+}
+
 interface AuthenticatedStatusData extends PublicStatusData {
   authenticated: true;
   mode: string;
@@ -97,6 +109,7 @@ interface AuthenticatedStatusData extends PublicStatusData {
   recentTokenEvents: TokenEvent[];
   tokenEventCounts: TokenEventCounts;
   refreshTokenStore?: RefreshTokenStoreHealth;
+  recentToolCalls: ToolCallEntry[];
 }
 
 type StatusData = PublicStatusData | AuthenticatedStatusData;
@@ -891,6 +904,114 @@ export default function Home() {
                         <div
                           className="text-xs text-muted-foreground mt-0.5"
                           data-testid={`text-token-event-ts-${idx}`}
+                        >
+                          {when}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-tool-calls">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wrench className="w-4 h-4" />
+              Recent Tool Activity
+              <Badge variant="secondary" className="ml-1 no-default-active-elevate text-xs">
+                last {authData.recentToolCalls?.length ?? 0}
+              </Badge>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Click Refresh above for the latest snapshot. Source:{" "}
+              <code className="font-mono">logs/tools.log</code>. Sensitive payloads (file content,
+              issue bodies, commit messages) are stored as length + sha256 prefix only.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {!authData.recentToolCalls || authData.recentToolCalls.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-no-tool-calls">
+                No tool calls recorded yet.
+              </p>
+            ) : (
+              <ul className="space-y-2" data-testid="list-tool-calls">
+                {authData.recentToolCalls.map((evt, idx) => {
+                  const isError = evt.outcome === "error";
+                  const owner = evt.args?.owner as string | undefined;
+                  const repo = evt.args?.repo as string | undefined;
+                  const target = owner && repo ? `${owner}/${repo}` : null;
+                  const path = (evt.args?.path as string | undefined) ||
+                    (evt.args?.from_path as string | undefined);
+                  let when = evt.ts;
+                  try {
+                    when = new Date(evt.ts).toLocaleString();
+                  } catch {}
+                  return (
+                    <li
+                      key={`${evt.ts}-${idx}`}
+                      className="flex items-start gap-3 text-sm border-b border-border last:border-0 pb-2 last:pb-0"
+                      data-testid={`row-tool-call-${idx}`}
+                    >
+                      <Badge
+                        variant={isError ? "destructive" : "default"}
+                        className="no-default-active-elevate text-xs font-mono shrink-0"
+                        data-testid={`badge-tool-outcome-${idx}`}
+                      >
+                        {evt.outcome}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <code
+                            className="text-xs font-mono font-medium text-foreground"
+                            data-testid={`text-tool-name-${idx}`}
+                          >
+                            {evt.tool}
+                          </code>
+                          {target && (
+                            <code
+                              className="text-xs font-mono text-muted-foreground"
+                              data-testid={`text-tool-target-${idx}`}
+                            >
+                              · {target}
+                            </code>
+                          )}
+                          {path && (
+                            <code
+                              className="text-xs font-mono text-muted-foreground truncate"
+                              data-testid={`text-tool-path-${idx}`}
+                            >
+                              · {path}
+                            </code>
+                          )}
+                          <span
+                            className="text-xs text-muted-foreground"
+                            data-testid={`text-tool-duration-${idx}`}
+                          >
+                            · {evt.duration_ms}ms
+                          </span>
+                          {typeof evt.status_code === "number" && (
+                            <span
+                              className="text-xs text-muted-foreground"
+                              data-testid={`text-tool-status-${idx}`}
+                            >
+                              · {evt.status_code}
+                            </span>
+                          )}
+                        </div>
+                        {evt.error_reason && (
+                          <div
+                            className="text-xs text-destructive mt-0.5 truncate"
+                            data-testid={`text-tool-error-${idx}`}
+                          >
+                            {evt.error_reason}
+                          </div>
+                        )}
+                        <div
+                          className="text-xs text-muted-foreground mt-0.5"
+                          data-testid={`text-tool-ts-${idx}`}
                         >
                           {when}
                         </div>

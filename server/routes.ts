@@ -36,6 +36,7 @@ import { checkFileStatus } from "./tools/check_file_status.js";
 import { allToolSchemas } from "./tools/registry.js";
 import { checkGithubStatus, getLastSuccessfulOperation, getUptimeSeconds } from "./lib/health.js";
 import { persistLog, persistLogWithIp, getRecentSessionEvents, getEventsForSession, getRecentTokenEvents, getTokenEventCounts, getEventsInRange, type PersistentLogEvent } from "./lib/persistent-log.js";
+import { persistToolCall, getRecentToolCalls, getToolCallsInRange } from "./lib/tool-log.js";
 import {
   initRefreshTokenStore,
   setRefreshToken,
@@ -94,16 +95,55 @@ function createMcpServer(): Server {
   mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     const handler = toolHandlers[name];
+    const start = Date.now();
+
     if (!handler) {
+      persistToolCall({
+        tool: name,
+        args,
+        outcome: "error",
+        duration_ms: 0,
+        error_reason: "unknown_tool",
+      });
       return {
         content: [{ type: "text", text: `Unknown tool: ${name}` }],
         isError: true,
       };
     }
     try {
-      return await handler(args || {});
+      const result = await handler(args || {});
+      const duration = Date.now() - start;
+      const isError = (result as any)?.isError === true;
+      let errorReason: string | undefined;
+      if (isError) {
+        const text = (result as any)?.content?.[0]?.text;
+        if (typeof text === "string") errorReason = text.slice(0, 200);
+      }
+      persistToolCall({
+        tool: name,
+        args,
+        outcome: isError ? "error" : "success",
+        duration_ms: duration,
+        error_reason: errorReason,
+      });
+      return result;
     } catch (error: any) {
+      const duration = Date.now() - start;
       console.error(`[${new Date().toISOString()}] [MCP] Unhandled error in tool '${name}':`, error);
+      const statusCode =
+        typeof error?.status === "number"
+          ? error.status
+          : typeof error?.response?.status === "number"
+          ? error.response.status
+          : undefined;
+      persistToolCall({
+        tool: name,
+        args,
+        outcome: "error",
+        duration_ms: duration,
+        error_reason: (error?.message ? String(error.message) : "unknown_error").slice(0, 200),
+        status_code: statusCode,
+      });
       return {
         content: [{ type: "text", text: `Internal error in tool '${name}': ${error.message}` }],
         isError: true,
@@ -695,6 +735,81 @@ export async function registerRoutes(
       refreshTokenStore: getRefreshTokenStartupHealth(),
       recentTokenEvents: getRecentTokenEvents(10),
       tokenEventCounts: getTokenEventCounts(),
+      recentToolCalls: getRecentToolCalls(10),
+    });
+  });
+
+  app.get("/api/tool-log", (req: Request, res: Response) => {
+    if (!requireAuth(req, res)) return;
+
+    const sinceRaw = req.query.since;
+    const untilRaw = req.query.until;
+    const toolsRaw = req.query.tools;
+    const outcomeRaw = req.query.outcome;
+    const limitRaw = req.query.limit;
+
+    const sinceMs = typeof sinceRaw === "string" ? Date.parse(sinceRaw) : NaN;
+    if (Number.isNaN(sinceMs)) {
+      res.status(400).json({
+        error: "invalid_request",
+        error_description: "since must be an ISO-8601 timestamp",
+      });
+      return;
+    }
+
+    let untilMs = Date.now();
+    if (typeof untilRaw === "string" && untilRaw.length > 0) {
+      const parsed = Date.parse(untilRaw);
+      if (Number.isNaN(parsed)) {
+        res.status(400).json({
+          error: "invalid_request",
+          error_description: "until must be an ISO-8601 timestamp",
+        });
+        return;
+      }
+      untilMs = parsed;
+    }
+
+    let tools: Set<string> | undefined;
+    if (typeof toolsRaw === "string" && toolsRaw.length > 0) {
+      tools = new Set(
+        toolsRaw.split(",").map((s) => s.trim()).filter(Boolean),
+      );
+    }
+
+    let outcome: "success" | "error" | undefined;
+    if (typeof outcomeRaw === "string" && outcomeRaw.length > 0) {
+      if (outcomeRaw !== "success" && outcomeRaw !== "error") {
+        res.status(400).json({
+          error: "invalid_request",
+          error_description: "outcome must be 'success' or 'error'",
+        });
+        return;
+      }
+      outcome = outcomeRaw;
+    }
+
+    let limit = 5000;
+    if (typeof limitRaw === "string") {
+      const parsed = parseInt(limitRaw, 10);
+      if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 10000) {
+        limit = parsed;
+      }
+    }
+
+    const entries = getToolCallsInRange({
+      sinceMs,
+      untilMs,
+      tools,
+      outcome,
+      limit,
+    });
+    res.json({
+      since: new Date(sinceMs).toISOString(),
+      until: new Date(untilMs).toISOString(),
+      count: entries.length,
+      truncated: entries.length === limit,
+      entries,
     });
   });
 
