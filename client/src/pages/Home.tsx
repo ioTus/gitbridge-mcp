@@ -141,7 +141,7 @@ export default function Home() {
   const isEmbedded = typeof window !== "undefined" && window.self !== window.top;
   const [devAutoLoginAttempted, setDevAutoLoginAttempted] = useState(false);
 
-  const { data, isLoading, error } = useQuery<StatusData>({
+  const { data, isLoading, error, isFetching, refetch } = useQuery<StatusData>({
     queryKey: ["/api/status", sessionFilter],
     queryFn: async () => {
       const headers: Record<string, string> = {};
@@ -156,11 +156,8 @@ export default function Home() {
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
       return res.json();
     },
-    refetchInterval: (query) => {
-      const d = query.state.data as AuthenticatedStatusData | undefined;
-      return d?.authenticated ? 60000 : false;
-    },
-    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const isAuthenticated = data?.authenticated === true;
@@ -437,6 +434,16 @@ export default function Home() {
               <SiGithub className="w-3 h-3 mr-1" />
               {authData.mode}
             </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              data-testid="button-refresh-status"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1 ${isFetching ? "animate-spin" : ""}`} />
+              {isFetching ? "Refreshing..." : "Refresh"}
+            </Button>
             <div className="flex-1" />
             <Button variant="ghost" size="sm" onClick={handleLogout} disabled={logoutLoading} data-testid="button-logout">
               <LogOut className="w-4 h-4 mr-1" />
@@ -662,7 +669,7 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  Auto-refreshes every 15s. Click a session id to see its full
+                  Click Refresh above for the latest snapshot. Click a session id to see its full
                   history. Source:{" "}
                   <code className="font-mono">logs/auth.log</code>.
                 </>
@@ -776,7 +783,7 @@ export default function Home() {
               </Badge>
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Auto-refreshes every 15s. Source: <code className="font-mono">logs/auth.log</code>.
+              Click Refresh above for the latest snapshot. Source: <code className="font-mono">logs/auth.log</code>.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
