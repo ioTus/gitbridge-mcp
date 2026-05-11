@@ -24,119 +24,115 @@ export interface ToolAllowList {
   digest: readonly string[];
 }
 
-const COMMON_OWNER_REPO = ["owner", "repo"] as const;
+const OR = ["owner", "repo"] as const;
 
 export const TOOL_ALLOW_LISTS: Record<string, ToolAllowList> = {
   read_file: {
-    keep: [...COMMON_OWNER_REPO, "path", "ref", "content_encoding"],
+    keep: [...OR, "path", "branch", "content_encoding"],
     digest: [],
   },
   write_file: {
-    keep: [...COMMON_OWNER_REPO, "path", "branch", "content_encoding"],
-    digest: ["content", "message"],
+    keep: [...OR, "path", "branch", "content_encoding"],
+    digest: ["content", "commit_message"],
   },
   patch_file: {
-    keep: [...COMMON_OWNER_REPO, "path", "branch"],
-    digest: ["message"],
+    keep: [...OR, "path", "branch"],
+    digest: ["operations"],
   },
   patch_multiple_files: {
-    keep: [...COMMON_OWNER_REPO, "branch"],
-    digest: ["message"],
+    keep: [...OR, "branch"],
+    digest: ["files"],
   },
   push_multiple_files: {
-    keep: [...COMMON_OWNER_REPO, "branch"],
-    digest: ["message"],
+    keep: [...OR, "branch"],
+    digest: ["files", "commit_message"],
   },
   list_files: {
-    keep: [...COMMON_OWNER_REPO, "path", "ref"],
+    keep: [...OR, "path", "branch"],
     digest: [],
   },
   check_file_status: {
-    keep: [...COMMON_OWNER_REPO, "path", "ref"],
+    keep: [...OR, "path", "branch"],
     digest: [],
   },
   search_files: {
-    keep: [...COMMON_OWNER_REPO, "query"],
+    keep: [...OR, "query", "path", "extension"],
     digest: [],
   },
   get_recent_commits: {
-    keep: [...COMMON_OWNER_REPO, "branch", "limit"],
+    keep: [...OR, "branch", "limit"],
     digest: [],
   },
   get_file_diff: {
-    keep: [...COMMON_OWNER_REPO, "path", "base", "head"],
+    keep: [...OR, "commit_sha", "path", "branch"],
     digest: [],
   },
   create_branch: {
-    keep: [...COMMON_OWNER_REPO, "branch", "from_ref"],
+    keep: [...OR, "branch_name", "from_branch"],
     digest: [],
   },
   list_branches: {
-    keep: [...COMMON_OWNER_REPO],
+    keep: [...OR, "limit"],
     digest: [],
   },
   move_file: {
-    keep: [...COMMON_OWNER_REPO, "from_path", "to_path", "branch"],
-    digest: ["message"],
+    keep: [...OR, "old_path", "new_path", "branch"],
+    digest: ["commit_message"],
   },
   delete_file: {
-    keep: [...COMMON_OWNER_REPO, "path", "branch"],
-    digest: ["message"],
+    keep: [...OR, "path", "branch"],
+    digest: ["commit_message"],
   },
   queue_write: {
-    keep: [...COMMON_OWNER_REPO, "path", "branch", "content_encoding"],
-    digest: ["content", "message"],
+    keep: [...OR, "path", "branch", "content_encoding"],
+    digest: ["content"],
   },
   flush_queue: {
-    keep: [...COMMON_OWNER_REPO, "branch"],
-    digest: ["message"],
+    keep: [...OR, "branch"],
+    digest: ["commit_message"],
   },
   create_repo: {
-    keep: ["name", "private"],
+    keep: ["name", "org", "private", "auto_init"],
     digest: ["description"],
   },
   create_issue: {
-    keep: [...COMMON_OWNER_REPO, "labels"],
+    keep: [...OR, "labels", "assignees"],
     digest: ["title", "body"],
   },
   update_issue: {
-    keep: [...COMMON_OWNER_REPO, "issue_number", "state", "labels"],
+    keep: [...OR, "issue_number", "state", "labels", "assignees"],
     digest: ["title", "body"],
   },
   list_issues: {
-    keep: [...COMMON_OWNER_REPO, "state", "labels"],
+    keep: [...OR, "state", "labels", "limit"],
     digest: [],
   },
   add_issue_comment: {
-    keep: [...COMMON_OWNER_REPO, "issue_number"],
+    keep: [...OR, "issue_number"],
     digest: ["body"],
   },
   read_issue: {
-    keep: [...COMMON_OWNER_REPO, "issue_number"],
+    keep: [...OR, "issue_number"],
     digest: [],
   },
   get_project_board: {
-    keep: [...COMMON_OWNER_REPO, "project_number"],
+    keep: ["owner", "project_number"],
     digest: [],
   },
   move_issue_to_column: {
-    keep: [...COMMON_OWNER_REPO, "issue_number", "column_id"],
+    keep: [...OR, "issue_number", "column_name", "project_number"],
     digest: [],
   },
 };
 
-function withinSizeBudget(value: unknown): boolean {
-  if (typeof value === "string") {
-    return Buffer.byteLength(value, "utf8") <= MAX_FIELD_BYTES;
+function fieldByteSize(value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === "string") return Buffer.byteLength(value, "utf8");
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    return Number.POSITIVE_INFINITY;
   }
-  if (typeof value === "object" && value !== null) {
-    try {
-      return Buffer.byteLength(JSON.stringify(value), "utf8") <= MAX_FIELD_BYTES;
-    } catch {
-      return false;
-    }
-  }
-  return true;
 }
 
 export function redactToolArgs(
@@ -154,22 +150,15 @@ export function redactToolArgs(
 
   for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
     if (SECRET_FIELD_PATTERN.test(key)) continue;
+    if (fieldByteSize(value) > MAX_FIELD_BYTES) continue;
 
     if (digest.has(key)) {
       out[key] = digestField(value);
       continue;
     }
-
     if (!keep.has(key)) continue;
-    if (!withinSizeBudget(value)) continue;
 
-    if (Array.isArray(value)) {
-      out[key] = value;
-    } else if (typeof value === "object" && value !== null) {
-      out[key] = value;
-    } else {
-      out[key] = value;
-    }
+    out[key] = value;
   }
 
   return out;
