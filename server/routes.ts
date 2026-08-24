@@ -34,9 +34,12 @@ import { patchFile } from "./tools/patch_file.js";
 import { patchMultipleFiles } from "./tools/patch_multiple_files.js";
 import { checkFileStatus } from "./tools/check_file_status.js";
 import { allToolSchemas } from "./tools/registry.js";
+import { formatToolResponse, splitResponseFormat } from "./tools/response-format.js";
 import { checkGithubStatus, getLastSuccessfulOperation, getUptimeSeconds } from "./lib/health.js";
 import { persistLog, persistLogWithIp, getRecentSessionEvents, getEventsForSession, getRecentTokenEvents, getTokenEventCounts, getEventsInRange, type PersistentLogEvent } from "./lib/persistent-log.js";
-import { persistToolCall, getRecentToolCalls, getToolCallsInRange } from "./lib/tool-log.js";
+import { scheduleToolActivity } from "./lib/tool-activity.js";
+import { classifyToolError } from "./lib/tool-error-class.js";
+import { initializeToolAnalytics } from "./lib/tool-analytics.js";
 import {
   initRefreshTokenStore,
   setRefreshToken,
@@ -94,6 +97,7 @@ function createMcpServer(): Server {
 
   mcpServer.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
+    const { format, handlerArgs } = splitResponseFormat(args as Record<string, unknown> | undefined);
     const handler = toolHandlers[name];
     const start = Date.now();
     const sessionId = (extra as any)?.sessionId as string | undefined;
@@ -104,12 +108,12 @@ function createMcpServer(): Server {
         : String(requestIdRaw);
 
     if (!handler) {
-      persistToolCall({
+      scheduleToolActivity({
         tool: name,
-        args,
+        args: handlerArgs,
         outcome: "error",
         duration_ms: 0,
-        error_reason: "unknown_tool",
+        error_class: "validation",
         session: sessionId,
         request_id: requestId,
       });
@@ -119,7 +123,7 @@ function createMcpServer(): Server {
       };
     }
     try {
-      const result = await handler(args || {});
+      const result = await handler(handlerArgs);
       const duration = Date.now() - start;
       const isError = (result as any)?.isError === true;
       let errorReason: string | undefined;
@@ -127,16 +131,16 @@ function createMcpServer(): Server {
         const text = (result as any)?.content?.[0]?.text;
         if (typeof text === "string") errorReason = text.slice(0, 200);
       }
-      persistToolCall({
+      scheduleToolActivity({
         tool: name,
-        args,
+        args: handlerArgs,
         outcome: isError ? "error" : "success",
         duration_ms: duration,
-        error_reason: errorReason,
+        error_class: isError ? classifyToolError(errorReason) : undefined,
         session: sessionId,
         request_id: requestId,
       });
-      return result;
+      return formatToolResponse(name, result, format);
     } catch (error: any) {
       const duration = Date.now() - start;
       console.error(`[${new Date().toISOString()}] [MCP] Unhandled error in tool '${name}':`, error);
@@ -146,12 +150,12 @@ function createMcpServer(): Server {
           : typeof error?.response?.status === "number"
           ? error.response.status
           : undefined;
-      persistToolCall({
+      scheduleToolActivity({
         tool: name,
-        args,
+        args: handlerArgs,
         outcome: "error",
         duration_ms: duration,
-        error_reason: (error?.message ? String(error.message) : "unknown_error").slice(0, 200),
+        error_class: classifyToolError(error),
         status_code: statusCode,
         session: sessionId,
         request_id: requestId,
@@ -166,15 +170,70 @@ function createMcpServer(): Server {
   return mcpServer;
 }
 
-const ALLOWED_ORIGINS = [
-  "https://claude.ai",
-  "https://www.claude.ai",
-  "https://claude.com",
-  "https://www.claude.com",
+// ---------------------------------------------------------------------------
+// ALLOWED_REDIRECT_ORIGINS — single source of truth for both CORS and OAuth
+// redirect URI validation.  Set the env var to a comma-separated list of bare
+// domains (no scheme, no path).  Omit it to use the built-in defaults.
+// Set it to "" or "none" to deny ALL redirect URIs (explicit lockdown).
+// ---------------------------------------------------------------------------
+const DEFAULT_REDIRECT_ORIGIN_DOMAINS = [
+  "claude.ai",
+  "claude.com",
+  "chatgpt.com",
+  "gemini.google.com",
+  "aistudio.google.com",
+  "grok.com",
+  "grok.x.ai",
+  "copilot.microsoft.com",
+  "cursor.sh",
+  "cursor.com",
 ];
 
+function parseAllowedRedirectOrigins(): string[] {
+  const raw = process.env.ALLOWED_REDIRECT_ORIGINS;
+  if (raw === undefined) {
+    // Env var not set — use the built-in defaults.
+    return DEFAULT_REDIRECT_ORIGIN_DOMAINS;
+  }
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "none") {
+    // Explicit lockdown: deny all redirect URIs.
+    return [];
+  }
+  return trimmed
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+const ALLOWED_ORIGIN_DOMAINS: string[] = parseAllowedRedirectOrigins();
+
+// Build the set of https origins accepted for CORS from the domain list.
+// Each domain "example.com" maps to "https://example.com" AND
+// "https://www.example.com" so both bare and www variants are covered.
+function buildAllowedCorsOriginSet(domains: string[]): Set<string> {
+  const s = new Set<string>();
+  for (const domain of domains) {
+    s.add(`https://${domain}`);
+    if (!domain.startsWith("www.")) {
+      s.add(`https://www.${domain}`);
+    }
+  }
+  return s;
+}
+
+const ALLOWED_CORS_ORIGINS: Set<string> = buildAllowedCorsOriginSet(ALLOWED_ORIGIN_DOMAINS);
+
+console.log(
+  `[${new Date().toISOString()}] [MCP] Allowed redirect/CORS origins: ${
+    ALLOWED_ORIGIN_DOMAINS.length === 0
+      ? "(none — lockdown mode)"
+      : ALLOWED_ORIGIN_DOMAINS.join(", ")
+  }`
+);
+
 function setCorsHeaders(res: Response, origin?: string): boolean {
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  if (origin && ALLOWED_CORS_ORIGINS.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
@@ -256,12 +315,18 @@ function safeCompare(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-const ALLOWED_REDIRECT_PATTERNS = [
-  /^https:\/\/(www\.)?claude\.(ai|com)(\/|$)/,
-];
-
 function isAllowedRedirectUri(uri: string): boolean {
-  return ALLOWED_REDIRECT_PATTERNS.some((p) => p.test(uri));
+  if (ALLOWED_ORIGIN_DOMAINS.length === 0) return false;
+  try {
+    const url = new URL(uri);
+    if (url.protocol !== "https:") return false;
+    const hostname = url.hostname.toLowerCase();
+    return ALLOWED_ORIGIN_DOMAINS.some(
+      (domain) => hostname === domain || hostname === `www.${domain}`
+    );
+  } catch {
+    return false;
+  }
 }
 
 function getServerOrigin(req: Request): string {
@@ -335,7 +400,7 @@ function evictSession(sessionId: string, reason: "idle_timeout" | "lru_cap"): vo
 function findOldestSessionId(): string | undefined {
   let oldestId: string | undefined;
   let oldestTs = Infinity;
-  for (const [sid, ts] of sessionActivity) {
+  for (const [sid, ts] of Array.from(sessionActivity.entries())) {
     if (ts < oldestTs) {
       oldestTs = ts;
       oldestId = sid;
@@ -380,7 +445,7 @@ const tokenRateLimiter = rateLimit({
 setInterval(() => {
   const now = Date.now();
   let sweptCodes = 0;
-  for (const [code, data] of authCodes) {
+  for (const [code, data] of Array.from(authCodes.entries())) {
     if (data.expiresAt < now) {
       authCodes.delete(code);
       sweptCodes++;
@@ -400,6 +465,7 @@ export async function registerRoutes(
   httpServer: HttpServer,
   app: Express
 ): Promise<HttpServer> {
+  setImmediate(() => void initializeToolAnalytics());
 
   const protectedResourceHandler = (req: Request, res: Response) => {
     setCorsHeaders(res, req.headers.origin);
@@ -742,86 +808,12 @@ export async function registerRoutes(
       activeSessions: totalSessions(),
       maxSessions: MAX_SESSIONS,
       refreshTokenCount: getRefreshTokenCount(),
+      allowedOriginDomains: ALLOWED_ORIGIN_DOMAINS,
       recentSessionEvents,
       sessionFilter,
       refreshTokenStore: getRefreshTokenStartupHealth(),
       recentTokenEvents: getRecentTokenEvents(10),
       tokenEventCounts: getTokenEventCounts(),
-      recentToolCalls: getRecentToolCalls(10),
-    });
-  });
-
-  app.get("/api/tool-log", (req: Request, res: Response) => {
-    if (!requireAuth(req, res)) return;
-
-    const sinceRaw = req.query.since;
-    const untilRaw = req.query.until;
-    const toolsRaw = req.query.tools;
-    const outcomeRaw = req.query.outcome;
-    const limitRaw = req.query.limit;
-
-    const sinceMs = typeof sinceRaw === "string" ? Date.parse(sinceRaw) : NaN;
-    if (Number.isNaN(sinceMs)) {
-      res.status(400).json({
-        error: "invalid_request",
-        error_description: "since must be an ISO-8601 timestamp",
-      });
-      return;
-    }
-
-    let untilMs = Date.now();
-    if (typeof untilRaw === "string" && untilRaw.length > 0) {
-      const parsed = Date.parse(untilRaw);
-      if (Number.isNaN(parsed)) {
-        res.status(400).json({
-          error: "invalid_request",
-          error_description: "until must be an ISO-8601 timestamp",
-        });
-        return;
-      }
-      untilMs = parsed;
-    }
-
-    let tools: Set<string> | undefined;
-    if (typeof toolsRaw === "string" && toolsRaw.length > 0) {
-      tools = new Set(
-        toolsRaw.split(",").map((s) => s.trim()).filter(Boolean),
-      );
-    }
-
-    let outcome: "success" | "error" | undefined;
-    if (typeof outcomeRaw === "string" && outcomeRaw.length > 0) {
-      if (outcomeRaw !== "success" && outcomeRaw !== "error") {
-        res.status(400).json({
-          error: "invalid_request",
-          error_description: "outcome must be 'success' or 'error'",
-        });
-        return;
-      }
-      outcome = outcomeRaw;
-    }
-
-    let limit = 5000;
-    if (typeof limitRaw === "string") {
-      const parsed = parseInt(limitRaw, 10);
-      if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 10000) {
-        limit = parsed;
-      }
-    }
-
-    const entries = getToolCallsInRange({
-      sinceMs,
-      untilMs,
-      tools,
-      outcome,
-      limit,
-    });
-    res.json({
-      since: new Date(sinceMs).toISOString(),
-      until: new Date(untilMs).toISOString(),
-      count: entries.length,
-      truncated: entries.length === limit,
-      entries,
     });
   });
 

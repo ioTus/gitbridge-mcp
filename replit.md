@@ -25,6 +25,7 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
   - Stubs: `phase2_stubs.ts` ()
 <!-- TOOLS:END -->
 - `server/tools/registry.ts` — Tool registration with `allToolSchemas`, `activeToolSchemas`, `phase2ToolSchemas` exports
+- `server/tools/response-format.ts` — Shared `format: compact|pretty` schema injection and compact-by-default success response formatting. Errors and content payloads remain intact.
 - `IME-docs/decisions/README.md` — Decision log for settled architectural decisions
 - `IME.md` — Spoke bootstrap (replaces CLAUDE.md), hub pointer to ioTus/ime, tool reference table
 - `IME-AGENTS.md` — Multi-agent collaboration index (replaces AGENTS.md)
@@ -81,19 +82,24 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - `GET /health` — Unauthenticated health check: server status, GitHub API reachability, PAT validity/expiration, last successful tool operation, uptime. Cached 30s.
 - `GET /api/status` — Server status JSON (tiered: public gets basic info; Bearer JWT gets full details). Dashboard fetches once on load + on manual Refresh button click — no automatic polling.
 - `GET /api/auth-log?since=<iso>&until=<iso>&events=<csv>&limit=<n>` — Authenticated query against `logs/auth.log` (and `auth.log.1`). Bearer JWT required. `since` mandatory ISO-8601 timestamp; `until` defaults to now; `events` is a comma-separated list of event types (e.g. `SESSION_START,SESSION_REBOUND,AUTH_REJECTED`); `limit` caps result count (default 5000, max 10000). Returns `{ since, until, count, truncated, entries }` with full `PersistentLogEntry` objects in chronological order. This is the canonical interface for historical OAuth/session troubleshooting beyond the last 10 events surfaced by `/api/status`.
-- `GET /api/tool-log?since=<iso>&until=<iso>&tools=<csv>&outcome=<success|error>&limit=<n>` — Authenticated query against `logs/tools.log` (and `tools.log.1`). Bearer JWT required. `since` mandatory ISO-8601; `until` defaults to now; `tools` filters by tool name (CSV); `outcome` filters by `success` or `error`; `limit` defaults 5000, max 10000. Returns `{ since, until, count, truncated, entries }` with full `ToolCallLogEntry` objects. Use this to diagnose "Claude says tool X failed" beyond the last 10 calls surfaced by `/api/status`.
 
-## Tool-Call Logging (Issue #30)
-- Every MCP tool invocation is recorded to `logs/tools.log` (JSON Lines, 5MB cap, one rotated backup `tools.log.1`, dir 0700, file 0600, in `.gitignore`, not web-accessible). Same security posture as `auth.log`.
-- Each entry: `ts`, `tool`, `outcome` (`success`/`error`), `duration_ms`, `args` (redacted), and on error a short `error_reason` and optional `status_code`. Response bodies are never persisted.
+## Tool-Call Logging and Analytics
+- Every MCP tool invocation is scheduled after dispatch and recorded to PostgreSQL with only `timestamp`, capped `tool`, optional capped `owner`/`repo`, `environment`, `connector_version`, `outcome`, and a closed-enum `error_class` for failures. Writes fail open and never delay, replace, or change the GitHub tool result.
+- Telemetry has no HTTP or dashboard read surface. Run `npm run audit:tool-usage` from the workspace for the production-only per-tool/version summary and 30-day-or-500-call readiness check.
+- Raw events are retained 90 days. Off-path maintenance runs at most daily, rolls expired rows into permanent monthly per-tool/environment/version counts, then deletes the raw rows. No scheduled process or self-announcement exists.
+- Production PostgreSQL connections require TLS; development uses Replit's local database transport. The pool maximum is two with bounded connection/query timeouts. The raw event table has one timestamp index.
+- Every invocation is also recorded to `logs/tools.log` (JSON Lines, 5MB cap, one rotated backup `tools.log.1`, dir 0700, file 0600, in `.gitignore`, not web-accessible) as a redacted, per-instance operational fallback.
+- Replit deployment filesystems are ephemeral and isolated from the development workspace: production log writes do not sync back, so an empty workspace `logs/tools.log` says nothing about deployed usage.
+- Each local entry: `ts`, `tool`, `outcome`, `duration_ms`, `args` (redacted), fixed `error_class` on failure, and optional `status_code`. Error messages and response bodies are never persisted.
 - Each entry also captures `session` (MCP transport session id) and `request_id` (JSON-RPC request id) so a tool failure can be traced back to the exact MCP session/request in `auth.log`.
 - **Redaction policy** is **per-tool allow-listed** in `server/lib/tool-log-redaction.ts` (applied at the dispatch wrapper — individual tools never call the logger directly). Default for any tool/field not on the list is **drop**. Each tool declares two sets:
   - `keep`: argument names persisted as raw values (e.g. `read_file` keeps `owner`, `repo`, `path`, `ref`, `content_encoding`).
   - `digest`: argument names replaced with `{length, sha256_prefix}` (e.g. `write_file` digests `content`, `message`; `create_issue` digests `title`, `body`).
   - Allow-lists are exhaustively defined for all 24 active tools; an unknown tool name returns `{}`.
 - **Defence in depth (always applied on top of the per-tool list):** field names matching `/token|secret|password|key|auth/i` are dropped; values larger than 4 KB are dropped; response bodies are never persisted.
-- Dashboard surfaces the last 10 tool calls in a "Recent Tool Activity" card on `/api/status` (manual Refresh only, no polling — same model as the other event cards).
 - Unit test: `npx tsx scripts/test-tool-log-redaction.ts` verifies per-tool allow-lists, digesting of sensitive fields, dropping of secret-pattern fields, the 4 KB cap, the unknown-tool default-drop, and that every registered tool has an allow-list.
+- Telemetry tests: `npm run test:tool-analytics`, `npm run test:tool-analytics-migration`, `npm run test:tool-analytics-performance`, and `npm run test:tool-telemetry-surfaces`.
+- `npm run audit:schema` reproduces the 31.11% tokenizer reduction; `npm run test:schema-routing` guards the fixed routing scenarios. Full method and per-tool counts: `docs/schema-overhead-audit.md`.
 
 ## Log surfaces
 For connector failures (`/mcp` 401s, "additional permissions" popup, sessions dropping), there are **two primary surfaces**. Reach for these first; **neither captures per-tool-call detail** — pre-auth `/mcp` rejects never reach a tool, so they will not appear in `logs/tools.log`.
@@ -105,11 +111,11 @@ For connector failures (`/mcp` 401s, "additional permissions" popup, sessions dr
 
 For `/mcp` connector failures, **`/api/auth-log` is almost always the right starting point** — see `IME-docs/runbooks/gitbridge-connector-failures.md` for the triage checklist.
 
-Supplementary (only after the request reached a tool): `logs/tools.log` (queryable via `/api/tool-log`) records per-MCP-tool-call outcomes — useful for "Claude says tool X returned an error" but **not** for "Claude can't reach the bridge at all".
+Supplementary (only after the request reached a tool): `logs/tools.log` is the local operational fallback. Durable telemetry is read only through direct workspace database queries at audit time. Neither helps when a request never reached a tool.
 
 ## V2 Changes
 - Multi-repo mode: all tools accept `owner` and `repo` params (no hardcoded env vars)
-- Write confirmation headers: `✅ Writing to: {owner}/{repo}` prefix on write tool responses
+- Response envelopes: all tools accept optional `format: "compact" | "pretty"` and default to compact successes; errors remain verbose. The former `✅ Writing to:` banner is available only in legacy/pretty handler output.
 - 6 new tools: search_files, move_file, delete_file, queue_write, flush_queue, get_recent_commits
 - Queue: in-memory Map keyed by `owner/repo`, last-write-wins dedup, resets on server restart
 - Project scoping: two approaches documented — Option A (one Project per repo) and Option B (multi-repo with IME.md)

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { redactToolArgs } from "./tool-log-redaction.js";
+import type { ToolErrorClass } from "./tool-error-class.js";
 
 const LOG_DIR = path.resolve(process.cwd(), "logs");
 const LOG_FILE = path.join(LOG_DIR, "tools.log");
@@ -15,6 +16,37 @@ function ensureLogDir(): void {
   }
   if (!fs.existsSync(LOG_FILE)) {
     fs.writeFileSync(LOG_FILE, "", { mode: 0o600 });
+  }
+  sanitizeLegacyLogFile(LOG_FILE);
+  if (fs.existsSync(LOG_FILE_BACKUP)) sanitizeLegacyLogFile(LOG_FILE_BACKUP);
+}
+
+function sanitizeLegacyLogFile(filePath: string): void {
+  try {
+    const source = fs.readFileSync(filePath, "utf8");
+    if (!source.includes('"error_reason"')) return;
+    const sanitized = source
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          const entry = JSON.parse(line) as Record<string, unknown>;
+          delete entry.error_reason;
+          if (entry.outcome === "error" && !entry.error_class) {
+            entry.error_class = "unknown";
+          }
+          return JSON.stringify(entry);
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean)
+      .join("\n");
+    fs.writeFileSync(filePath, sanitized ? `${sanitized}\n` : "", {
+      mode: 0o600,
+    });
+  } catch {
+    // The operational fallback remains fail-open.
   }
 }
 
@@ -39,7 +71,7 @@ export interface ToolCallLogEntry {
   args?: Record<string, unknown>;
   session?: string;
   request_id?: string;
-  error_reason?: string;
+  error_class?: ToolErrorClass;
   status_code?: number;
 }
 
@@ -50,8 +82,30 @@ export interface PersistToolCallInput {
   duration_ms: number;
   session?: string;
   request_id?: string;
-  error_reason?: string;
+  error_class?: ToolErrorClass;
   status_code?: number;
+}
+
+export function buildToolCallLogEntry(
+  input: PersistToolCallInput,
+  timestamp = new Date().toISOString(),
+): ToolCallLogEntry {
+  const args = redactToolArgs(input.tool, input.args);
+  if (typeof args.owner === "string") args.owner = args.owner.slice(0, 39);
+  if (typeof args.repo === "string") args.repo = args.repo.slice(0, 100);
+  const entry: ToolCallLogEntry = {
+    ts: timestamp,
+    tool: input.tool.slice(0, 64),
+    outcome: input.outcome,
+    duration_ms: input.duration_ms,
+    args,
+  };
+  if (input.session) entry.session = input.session;
+  if (input.request_id) entry.request_id = input.request_id;
+  if (input.error_class) entry.error_class = input.error_class;
+  if (typeof input.status_code === "number")
+    entry.status_code = input.status_code;
+  return entry;
 }
 
 export function persistToolCall(input: PersistToolCallInput): void {
@@ -62,19 +116,7 @@ export function persistToolCall(input: PersistToolCallInput): void {
     }
     rotateIfNeeded();
 
-    const entry: ToolCallLogEntry = {
-      ts: new Date().toISOString(),
-      tool: input.tool,
-      outcome: input.outcome,
-      duration_ms: input.duration_ms,
-      args: redactToolArgs(input.tool, input.args),
-    };
-    if (input.session) entry.session = input.session;
-    if (input.request_id) entry.request_id = input.request_id;
-    if (input.error_reason)
-      entry.error_reason = String(input.error_reason).slice(0, 200);
-    if (typeof input.status_code === "number")
-      entry.status_code = input.status_code;
+    const entry = buildToolCallLogEntry(input);
 
     fs.appendFileSync(LOG_FILE, JSON.stringify(entry) + "\n", {
       mode: 0o600,

@@ -66,6 +66,7 @@ Create a `.env` file or set these in your hosting platform's secrets/environment
 | `OAUTH_CLIENT_ID` | **Yes** | OAuth Client ID for authenticating MCP connections |
 | `OAUTH_CLIENT_SECRET` | **Yes** | OAuth Client Secret (used to sign/verify JWT access tokens) |
 | `ALLOWED_REPOS` | No | Comma-separated `owner/repo` pairs to restrict which repositories tools can access (e.g. `ioTus/my-repo,ioTus/other-repo`). If unset, all repos the PAT can reach are allowed. |
+| `DATABASE_URL` | No | PostgreSQL connection used for durable, privacy-minimal tool usage analytics. Replit supplies this automatically when its database is attached. Tool calls still run if analytics is unavailable. |
 | `PORT` | No | Server port (default: `5000`) |
 
 The server will **refuse to start** if any required variable is missing. All three are mandatory — there is no unauthenticated mode.
@@ -153,7 +154,42 @@ Your GitHub PAT determines the **blast radius** — every repo the PAT can acces
 
 ## Tools
 
-All tools accept `owner` and `repo` as required parameters. Write tools prefix their responses with `✅ Writing to: {owner}/{repo}`.
+All 24 tools accept an optional `format` parameter: `compact` (the default) or
+`pretty`. Successful responses use the compact form by default; pass
+`format: "pretty"` when an expanded, human-readable layout is needed. Errors
+remain verbose and actionable regardless of format. Compact formatting never
+removes content payloads or load-bearing identifiers, including full commit
+SHAs.
+
+The advertised schema is measured reproducibly with
+`npm run audit:schema`; see
+[`docs/schema-overhead-audit.md`](docs/schema-overhead-audit.md) for the
+before/after counts and fixed tool-selection checks.
+
+### Durable tool usage analytics
+
+Each tool call writes a fail-open PostgreSQL event containing only its
+timestamp, capped tool name, optional capped `owner`/`repo`, environment,
+connector version, outcome, and a fixed error class for failures.
+No payloads, file contents, issue text, commit messages, credentials, session
+IDs, request IDs, responses, or error text enter the analytics table.
+
+Telemetry has no HTTP or dashboard read surface. Operators run
+`npm run audit:tool-usage` from the workspace to produce the production-only,
+per-tool/version frequency summary and threshold status.
+
+The connector-profile split remains deferred until the durable store has at
+least 30 days of observations or 500 calls. Local `logs/tools.log` remains a
+redacted, per-instance operational fallback. Replit deployment filesystems are
+ephemeral and do not sync logs back to the development workspace, so the local
+file is not an analytics source of truth.
+
+Raw events are retained for 90 days. Off-path maintenance rolls expired events
+into permanent monthly per-tool/environment/version counts before deletion.
+Both durable and local sinks use fixed error classes and never persist error
+messages. Production PostgreSQL uses required TLS; development uses Replit's
+local database transport. The client has a maximum two-connection pool and the
+raw-event table has one timestamp index.
 
 <!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 24 -->
 ### File Tools
@@ -427,7 +463,11 @@ When any MCP call succeeds after a period of degraded mode:
 6. Clear the queue. Resume normal operations.
 ```
 
-This approach requires more discipline but enables cross-repo workflows (e.g., coordinating changes across a frontend and backend repo). Every write tool response includes `✅ Writing to: {owner}/{repo}` so you can always verify the target.
+This approach requires more discipline but enables cross-repo workflows (e.g.,
+coordinating changes across a frontend and backend repo). Verify the target
+from the explicit `owner` and `repo` on every call; compact responses preserve
+the identifiers needed to follow writes and commits without an emoji/banner
+prefix.
 
 ## Dashboard
 
