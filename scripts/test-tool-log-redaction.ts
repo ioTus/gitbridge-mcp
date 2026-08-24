@@ -171,6 +171,21 @@ assert(Array.isArray(rs.paths) && rs.paths.length === 2, "read_files: paths kept
 assert(rs.metadata_only === true, "read_files: metadata_only kept");
 assert(!("content" in rs), "read_files: content dropped");
 
+console.log("\nTest: session_bootstrap — selectors retained, content dropped");
+const bootstrap = redactToolArgs("session_bootstrap", {
+  owner: "o",
+  repo: "r",
+  extras: ["project/_config.md"],
+  branch: "main",
+  content: "should never appear",
+});
+assert(
+  Array.isArray(bootstrap.extras) && bootstrap.extras.length === 1,
+  "session_bootstrap: extras kept",
+);
+assert(bootstrap.branch === "main", "session_bootstrap: branch kept");
+assert(!("content" in bootstrap), "session_bootstrap: content dropped");
+
 console.log("\nTest: unknown tool name — empty record");
 assert(JSON.stringify(redactToolArgs("nonexistent_tool", { owner: "o" })) === "{}", "unknown tool returns empty");
 for (const retired of ["read_file", "write_file", "patch_file", "check_file_status"]) {

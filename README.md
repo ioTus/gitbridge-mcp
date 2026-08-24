@@ -154,7 +154,7 @@ Your GitHub PAT determines the **blast radius** — every repo the PAT can acces
 
 ## Tools
 
-All 21 tools accept an optional `format` parameter: `compact` (the default) or
+All 22 tools accept an optional `format` parameter: `compact` (the default) or
 `pretty`. Successful responses use the compact form by default; pass
 `format: "pretty"` when an expanded, human-readable layout is needed. Errors
 remain verbose and actionable regardless of format. Compact formatting never
@@ -191,12 +191,13 @@ messages. Production PostgreSQL uses required TLS; development uses Replit's
 local database transport. The client has a maximum two-connection pool and the
 raw-event table has one timestamp index.
 
-<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 21 -->
+<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 22 -->
 ### File Tools
 
 | Tool | Description |
 |------|-------------|
 | `read_files` | Read up to 20 files in order with SHAs and inline per-file errors, or set `metadata_only: true` to return only path/SHA/size without budget accounting. A 256 KiB decoded-content budget protects caller context for content reads. |
+| `session_bootstrap` | Return the root listing plus `IME.md` and up to 19 extra startup files in one envelope. Files share the 256 KiB decoded-content budget and failures remain inline; missing `IME.md` signals that the repo is not IME-initialized. |
 | `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
 | `list_files` | List files and folders at a path in a GitHub repository |
 | `patch_multiple_files` | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |

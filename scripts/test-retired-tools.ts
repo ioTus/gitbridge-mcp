@@ -19,7 +19,7 @@ const expected = {
 };
 
 assert.deepEqual(retiredToolErrors, expected);
-assert.equal(allToolSchemas.length, 21);
+assert.equal(allToolSchemas.length, 22);
 for (const [name, message] of Object.entries(expected)) {
   assert.equal(
     allToolSchemas.some((schema) => schema.name === name),

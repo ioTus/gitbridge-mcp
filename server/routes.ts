@@ -10,6 +10,7 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { readFiles } from "./tools/read_files.js";
+import { sessionBootstrap } from "./tools/session_bootstrap.js";
 import { pushMultipleFiles } from "./tools/push_multiple_files.js";
 import { listFiles } from "./tools/list_files.js";
 import { createIssue } from "./tools/create_issue.js";
@@ -52,6 +53,7 @@ const allTools = allToolSchemas;
 
 const toolHandlers: Record<string, (args: any) => Promise<any>> = {
   read_files: readFiles,
+  session_bootstrap: sessionBootstrap,
   push_multiple_files: pushMultipleFiles,
   list_files: listFiles,
   create_issue: createIssue,

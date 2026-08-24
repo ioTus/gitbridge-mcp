@@ -37,6 +37,10 @@ export const TOOL_ALLOW_LISTS: Record<string, ToolAllowList> = {
     ],
     digest: [],
   },
+  session_bootstrap: {
+    keep: [...OR, "extras", "branch"],
+    digest: [],
+  },
   patch_multiple_files: {
     keep: [...OR, "branch"],
     digest: ["files"],

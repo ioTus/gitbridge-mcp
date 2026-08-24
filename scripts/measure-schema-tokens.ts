@@ -75,9 +75,19 @@ const retirementBaselineTools = await loadBaselineTools(
   retirementBaselineCommit,
 );
 const currentTools = advertisedOnly(allToolSchemas);
+const postRetirementAddedTools = currentTools
+  .map((tool) => tool.name)
+  .filter(
+    (name) =>
+      !retirementBaselineTools.some((baselineTool) => baselineTool.name === name),
+  );
+const postRetirementTools = currentTools.filter(
+  (tool) => !postRetirementAddedTools.includes(tool.name),
+);
 const baseline = measure(baselineTools);
 const retirementBaseline = measure(retirementBaselineTools);
 const current = measure(currentTools);
+const postRetirement = measure(postRetirementTools);
 const retirementBaselineByName = new Map(
   retirementBaselineTools.map((tool) => [tool.name, tool]),
 );
@@ -90,7 +100,7 @@ const issue44ReductionPercent =
     baseline.total.tokens) *
   100;
 const retirementReductionPercent =
-  ((retirementBaseline.total.tokens - current.total.tokens) /
+  ((retirementBaseline.total.tokens - postRetirement.total.tokens) /
     retirementBaseline.total.tokens) *
   100;
 const addedSinceIssue44 = retirementBaselineTools
@@ -122,12 +132,22 @@ console.log(
       },
       retirement: {
         before: retirementBaseline.total,
-        after: current.total,
+        after: postRetirement.total,
         beforeToolCount: retirementBaselineTools.length,
-        afterToolCount: currentTools.length,
+        afterToolCount: postRetirementTools.length,
         retiredTools,
         tokenReductionPercent: Number(
           retirementReductionPercent.toFixed(2),
+        ),
+      },
+      current: {
+        total: current.total,
+        toolCount: currentTools.length,
+        addedAfterRetirement: Object.fromEntries(
+          postRetirementAddedTools.map((name) => [
+            name,
+            current.perToolTokens[name],
+          ]),
         ),
       },
     },
@@ -157,9 +177,20 @@ if (issue44ReductionPercent < 30) {
 }
 if (
   retirementBaselineTools.length !== 25 ||
-  currentTools.length !== 21 ||
+  postRetirementTools.length !== 21 ||
   retirementReductionPercent <= 0
 ) {
   console.error("Issue #45 retirement audit did not produce 25 -> 21.");
+  process.exit(1);
+}
+if (
+  currentTools.length !== 22 ||
+  JSON.stringify(postRetirementAddedTools) !==
+    JSON.stringify(["session_bootstrap"])
+) {
+  console.error({
+    expectedCurrentToolCount: 22,
+    postRetirementAddedTools,
+  });
   process.exit(1);
 }

@@ -12,7 +12,7 @@ const text = (value: string, isError = false) => ({
 });
 const responseText = (result: ReturnType<typeof text>) => result.content[0].text;
 
-assert.equal(allToolSchemas.length, 21);
+assert.equal(allToolSchemas.length, 22);
 for (const schema of allToolSchemas) {
   assert.deepEqual(schema.inputSchema.properties.format.enum, ["compact", "pretty"]);
   assert.equal(schema.inputSchema.properties.format.default, "compact");
@@ -60,6 +60,7 @@ assert.strictEqual(formatToolResponse("write_file", error, "compact"), error);
 
 const representativeResponses: Record<string, string> = {
   read_files: `[\n  {\n    "path": "a.ts",\n    "sha": "${fullSha}",\n    "content": "line one\\n  line two"\n  }\n]`,
+  session_bootstrap: `{\n  "root": {\n    "items": [{"name":"IME.md","path":"IME.md","type":"file"}]\n  },\n  "files": [{"path":"IME.md","sha":"${fullSha}","content":"# IME"}]\n}`,
   push_multiple_files: `✅ Writing to: o/r\nSuccessfully pushed 2 files in a single commit.\nFiles: a.ts, b.ts\nCommit SHA: ${fullSha}\nBranch: main`,
   list_files: `[{"name":"a.ts","path":"a.ts","type":"file"}]`,
   create_issue: "✅ Writing to: o/r\nIssue created successfully.\nNumber: #7\nTitle: Fix\nURL: https://github.test/o/r/issues/7",

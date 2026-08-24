@@ -2,13 +2,14 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 
 export const listFilesSchema = {
   name: "list_files",
-  description: "List files and folders at a path in a GitHub repository",
+  category: "file",
+  description: "List files and folders at a path",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
-      path: { type: "string", description: "Directory path (default: root)", default: "" },
-      branch: { type: "string", description: "Branch name (default: main)", default: "main" },
+      path: { type: "string", description: "Directory path", default: "" },
+      branch: { type: "string", description: "Branch", default: "main" },
     },
     required: ["owner", "repo"],
   },
@@ -29,7 +30,7 @@ export async function listFiles(args: { owner?: string; repo?: string; path?: st
     if (!Array.isArray(data)) {
       logToolCall("list_files", { owner, repo, path, branch }, "error", "Path is a file, not a directory");
       return {
-        content: [{ type: "text", text: `Error: '${path}' is a file, not a directory. Use read_file instead.` }],
+        content: [{ type: "text", text: `Error: '${path}' is a file, not a directory. Use read_files instead.` }],
         isError: true,
       };
     }

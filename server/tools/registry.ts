@@ -1,4 +1,5 @@
 import { readFilesSchema } from "./read_files.js";
+import { sessionBootstrapSchema } from "./session_bootstrap.js";
 import { pushMultipleFilesSchema } from "./push_multiple_files.js";
 import { listFilesSchema } from "./list_files.js";
 import { createIssueSchema } from "./create_issue.js";
@@ -34,6 +35,7 @@ export interface ToolSchema {
 
 const toolSchemas: ToolSchema[] = [
   readFilesSchema,
+  sessionBootstrapSchema,
   pushMultipleFilesSchema,
   listFilesSchema,
   createIssueSchema,

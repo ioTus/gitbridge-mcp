@@ -44,6 +44,10 @@ The 629-token reduction comes from removing `read_file`, `write_file`,
 permanent runtime migration errors remain server-side and therefore cost no
 schema tokens.
 
+The subsequently added `session_bootstrap` schema is reported separately by
+the audit command at 157 tokens, preserving the historical 25→21 retirement
+measurement. The complete current 22-tool schema measures 2,868 tokens.
+
 Required fields, defaults, enum values, and runtime behavior are unchanged.
 Common `owner`, `repo`, and `format` prose was minimized because their names,
 types, enum, and default already communicate the contract.
@@ -100,6 +104,12 @@ The structured evaluator result is checked in as
 
 `npm run test:schema-routing` also guards the distinguishing routing signals in
 these schemas.
+
+After `session_bootstrap` was added, the same evaluator received the complete
+22-tool schema and eight fixed requests. It selected `session_bootstrap` for
+both startup requests and retained the expected tools for all six controls
+(8/8); the checked-in evaluator artifact records both the historical and
+current runs.
 
 ## Durable usage window
 

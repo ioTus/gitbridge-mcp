@@ -40,12 +40,13 @@ If a user reports "GitBridge tools stopped working" / "the connector is broken" 
 
 *Updated by Replit Agent with each build.*
 
-<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in README.md and replit.md. Tool count: 21 -->
+<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in README.md and replit.md. Tool count: 22 -->
 ### Live (V2):
 
 | Tool | Category | What it does |
 |------|----------|-------------|
 | `read_files` | File Tools | Read up to 20 files in order with SHAs and inline errors, or set `metadata_only: true` for path/SHA/size only with no budget accounting. A 256 KiB decoded-content budget protects caller context for content reads. |
+| `session_bootstrap` | File Tools | Return the root listing plus `IME.md` and up to 19 extra startup files in one envelope. Files share the 256 KiB decoded-content budget; missing `IME.md` means the repo is not IME-initialized. |
 | `push_multiple_files` | File Tools | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
 | `list_files` | File Tools | List files and folders at a path in a GitHub repository |
 | `patch_multiple_files` | File Tools | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |
@@ -70,7 +71,7 @@ If a user reports "GitBridge tools stopped working" / "the connector is broken" 
 All tools require `owner` and `repo` parameters except `create_repo`
 (which takes `name` and optional `org`) and `get_project_board`
 (where `repo` is optional — only `owner` and `project_number` are required).
-All 21 tools accept optional `format: "compact" | "pretty"`; `compact` is the
+All 22 tools accept optional `format: "compact" | "pretty"`; `compact` is the
 default. Successful responses are compact by default, while errors remain
 verbose and actionable regardless of format. Compact formatting preserves
 content payloads and load-bearing identifiers, including full commit SHAs; use
