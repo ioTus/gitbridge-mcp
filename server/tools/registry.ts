@@ -1,4 +1,5 @@
 import { readFileSchema } from "./read_file.js";
+import { readFilesSchema } from "./read_files.js";
 import { writeFileSchema } from "./write_file.js";
 import { pushMultipleFilesSchema } from "./push_multiple_files.js";
 import { listFilesSchema } from "./list_files.js";
@@ -19,6 +20,10 @@ import { listBranchesSchema } from "./list_branches.js";
 import { getFileDiffSchema } from "./get_file_diff.js";
 import { getProjectBoardSchema } from "./get_project_board.js";
 import { moveIssueToColumnSchema } from "./move_issue_to_column.js";
+import { patchFileSchema } from "./patch_file.js";
+import { patchMultipleFilesSchema } from "./patch_multiple_files.js";
+import { checkFileStatusSchema } from "./check_file_status.js";
+import { addResponseFormat } from "./response-format.js";
 
 export interface ToolSchema {
   name: string;
@@ -31,8 +36,9 @@ export interface ToolSchema {
   };
 }
 
-export const allToolSchemas: ToolSchema[] = [
+const toolSchemas: ToolSchema[] = [
   readFileSchema,
+  readFilesSchema,
   writeFileSchema,
   pushMultipleFilesSchema,
   listFilesSchema,
@@ -53,7 +59,11 @@ export const allToolSchemas: ToolSchema[] = [
   getFileDiffSchema,
   getProjectBoardSchema,
   moveIssueToColumnSchema,
+  patchFileSchema,
+  patchMultipleFilesSchema,
+  checkFileStatusSchema,
 ] as ToolSchema[];
 
+export const allToolSchemas: ToolSchema[] = toolSchemas.map(addResponseFormat);
 export const activeToolSchemas = allToolSchemas;
 export const phase2ToolSchemas: ToolSchema[] = [];

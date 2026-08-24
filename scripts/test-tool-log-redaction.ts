@@ -172,6 +172,14 @@ const r = redactToolArgs("read_file", {
 });
 assert(!("content" in r), "read_file: content dropped");
 
+console.log("\nTest: read_files — paths retained, content dropped");
+const rs = redactToolArgs("read_files", {
+  owner: "o", repo: "r", paths: ["a", "b"], branch: "main",
+  content_encoding: "utf-8", content: "should never appear",
+});
+assert(Array.isArray(rs.paths) && rs.paths.length === 2, "read_files: paths kept");
+assert(!("content" in rs), "read_files: content dropped");
+
 console.log("\nTest: unknown tool name — empty record");
 assert(JSON.stringify(redactToolArgs("nonexistent_tool", { owner: "o" })) === "{}", "unknown tool returns empty");
 
@@ -182,7 +190,7 @@ assert(/^[0-9a-f]{8}$/.test(d.sha256_prefix), "digest 8 hex chars");
 
 console.log("\nTest: every registered tool has an allow-list");
 const registeredTools = [
-  "read_file","write_file","push_multiple_files","list_files","create_issue",
+  "read_file","read_files","write_file","push_multiple_files","list_files","create_issue",
   "update_issue","list_issues","add_issue_comment","read_issue","search_files",
   "move_file","delete_file","queue_write","flush_queue","get_recent_commits",
   "create_repo","create_branch","list_branches","get_file_diff",

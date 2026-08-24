@@ -40,12 +40,13 @@ If a user reports "GitBridge tools stopped working" / "the connector is broken" 
 
 *Updated by Replit Agent with each build.*
 
-<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in README.md and replit.md. Tool count: 24 -->
+<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in README.md and replit.md. Tool count: 25 -->
 ### Live (V2):
 
 | Tool | Category | What it does |
 |------|----------|-------------|
 | `read_file` | File Tools | Read file contents. Supports `content_encoding: "base64"` for binary files, which returns `mime_type` and `size_bytes` metadata alongside content. |
+| `read_files` | File Tools | Read up to 20 files in order with SHAs and inline errors. A 256 KiB decoded-content budget protects caller context; skipped content still returns SHA and size. |
 | `write_file` | File Tools | Create or update a single file. Supports `content_encoding: "base64"` for binary content. |
 | `push_multiple_files` | File Tools | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
 | `list_files` | File Tools | List files and folders at a path in a GitHub repository |
@@ -73,7 +74,12 @@ If a user reports "GitBridge tools stopped working" / "the connector is broken" 
 All tools require `owner` and `repo` parameters except `create_repo`
 (which takes `name` and optional `org`) and `get_project_board`
 (where `repo` is optional — only `owner` and `project_number` are required).
-Write tools prefix responses with `✅ Writing to: {owner}/{repo}`.
+All 25 tools accept optional `format: "compact" | "pretty"`; `compact` is the
+default. Successful responses are compact by default, while errors remain
+verbose and actionable regardless of format. Compact formatting preserves
+content payloads and load-bearing identifiers, including full commit SHAs; use
+`format: "pretty"` for an expanded human-readable layout. Write responses do
+not use an emoji/banner prefix.
 Project tools require the PAT to have the `project` scope for
 GitHub Projects V2 access.
 <!-- TOOLS:END -->

@@ -154,7 +154,7 @@ Your GitHub PAT determines the **blast radius** — every repo the PAT can acces
 
 ## Tools
 
-All 24 tools accept an optional `format` parameter: `compact` (the default) or
+All 25 tools accept an optional `format` parameter: `compact` (the default) or
 `pretty`. Successful responses use the compact form by default; pass
 `format: "pretty"` when an expanded, human-readable layout is needed. Errors
 remain verbose and actionable regardless of format. Compact formatting never
@@ -191,12 +191,13 @@ messages. Production PostgreSQL uses required TLS; development uses Replit's
 local database transport. The client has a maximum two-connection pool and the
 raw-event table has one timestamp index.
 
-<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 24 -->
+<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 25 -->
 ### File Tools
 
 | Tool | Description |
 |------|-------------|
 | `read_file` | Read file contents. Supports `content_encoding: "base64"` for binary files, which returns `mime_type` and `size_bytes` metadata alongside content. |
+| `read_files` | Read up to 20 files in order with SHAs and inline per-file errors. A 256 KiB decoded-content budget protects caller context; files that do not fit return SHA and size without content. |
 | `write_file` | Create or update a single file. Supports `content_encoding: "base64"` for binary content. |
 | `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
 | `list_files` | List files and folders at a path in a GitHub repository |

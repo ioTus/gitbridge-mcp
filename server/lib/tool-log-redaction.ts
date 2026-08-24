@@ -31,6 +31,10 @@ export const TOOL_ALLOW_LISTS: Record<string, ToolAllowList> = {
     keep: [...OR, "path", "branch", "content_encoding"],
     digest: [],
   },
+  read_files: {
+    keep: [...OR, "paths", "branch", "content_encoding"],
+    digest: [],
+  },
   write_file: {
     keep: [...OR, "path", "branch", "content_encoding"],
     digest: ["content", "commit_message"],

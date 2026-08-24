@@ -14,8 +14,8 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - `server/routes.ts` — MCP server setup, OAuth token endpoint, Streamable HTTP + SSE endpoints, CORS, auth middleware, tool registration
 - `server/lib/github.ts` — Octokit client, shared `validateOwnerRepo()` helper, `ownerRepoParams` schema fragment
 <!-- TOOLS:START -->
-- `server/tools/` — Individual tool implementations (24 active + 0 Phase 2 stubs)
-  - File Tools: `read_file.ts`, `write_file.ts`, `patch_file.ts`, `patch_multiple_files.ts`, `push_multiple_files.ts`, `list_files.ts`, `check_file_status.ts` (content_encoding: base64 supported on read_file, write_file, push_multiple_files, queue_write)
+- `server/tools/` — Individual tool implementations (25 active + 0 Phase 2 stubs)
+  - File Tools: `read_file.ts`, `read_files.ts`, `write_file.ts`, `patch_file.ts`, `patch_multiple_files.ts`, `push_multiple_files.ts`, `list_files.ts`, `check_file_status.ts` (content_encoding: base64 supported on read_file, read_files, write_file, push_multiple_files, queue_write)
   - Issue Tools: `create_issue.ts`, `update_issue.ts`, `list_issues.ts`, `add_issue_comment.ts`, `read_issue.ts`
   - Search & History: `search_files.ts`, `get_recent_commits.ts`, `get_file_diff.ts`
   - Branch Management: `create_branch.ts`, `list_branches.ts`
@@ -95,7 +95,7 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - **Redaction policy** is **per-tool allow-listed** in `server/lib/tool-log-redaction.ts` (applied at the dispatch wrapper — individual tools never call the logger directly). Default for any tool/field not on the list is **drop**. Each tool declares two sets:
   - `keep`: argument names persisted as raw values (e.g. `read_file` keeps `owner`, `repo`, `path`, `ref`, `content_encoding`).
   - `digest`: argument names replaced with `{length, sha256_prefix}` (e.g. `write_file` digests `content`, `message`; `create_issue` digests `title`, `body`).
-  - Allow-lists are exhaustively defined for all 24 active tools; an unknown tool name returns `{}`.
+  - Allow-lists are exhaustively defined for all 25 active tools; an unknown tool name returns `{}`.
 - **Defence in depth (always applied on top of the per-tool list):** field names matching `/token|secret|password|key|auth/i` are dropped; values larger than 4 KB are dropped; response bodies are never persisted.
 - Unit test: `npx tsx scripts/test-tool-log-redaction.ts` verifies per-tool allow-lists, digesting of sensitive fields, dropping of secret-pattern fields, the 4 KB cap, the unknown-tool default-drop, and that every registered tool has an allow-list.
 - Telemetry tests: `npm run test:tool-analytics`, `npm run test:tool-analytics-migration`, `npm run test:tool-analytics-performance`, and `npm run test:tool-telemetry-surfaces`.
@@ -122,10 +122,11 @@ Supplementary (only after the request reached a tool): `logs/tools.log` is the l
 - Security: PAT scoping best practices added to README, OAuth audit completed (Issue #6)
 
 ## Binary File Support (Issue #30)
-- `read_file`, `write_file`, `push_multiple_files`, `queue_write` all accept `content_encoding` parameter: `"utf-8"` (default) or `"base64"`
+- `read_file`, `read_files`, `write_file`, `push_multiple_files`, `queue_write` all accept `content_encoding` parameter: `"utf-8"` (default) or `"base64"`
 - `flush_queue` carries `content_encoding` from queued entries through to blob creation
 - When `content_encoding: "base64"`, content is passed through to GitHub API without re-encoding (GitHub natively accepts base64)
 - `read_file` with `content_encoding: "base64"` returns raw base64 plus `mime_type` (via `mime-types` npm package) and `size_bytes` metadata
+- `read_files` reads 1–20 paths sequentially in input order and returns one compact JSON array. GitHub/directory failures are inline. Successful content shares a 256 KiB decoded-byte budget to protect caller context (~70k tokens); entries that do not fit return `path`, `sha`, `size_bytes`, and `error: "aggregate_limit"`, then processing continues so smaller later files can still fit.
 - Invalid `content_encoding` values are rejected with a clear error message (defensive validation beyond schema-level enum)
 - Fully backward-compatible: all tools default to `"utf-8"`, existing text workflows unchanged
 - `push_multiple_files` supports per-file encoding, allowing mixed text and binary files in a single commit

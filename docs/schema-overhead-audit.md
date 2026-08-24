@@ -14,6 +14,9 @@ containing only each tool's `name`, `description`, and `inputSchema`.
 The audit command reconstructs the baseline from that Git commit in a temporary
 directory, imports its exact registry, and applies the same serializer and
 tokenizer to both snapshots. Baseline counts are not hardcoded.
+When tools are added later, the reduction check compares the original tool set
+by name and reports added-tool overhead separately rather than treating a new
+capability as a description-regression failure.
 
 ## Result
 
@@ -22,6 +25,9 @@ tokenizer to both snapshots. Baseline counts are not hardcoded.
 | Tokens | 4,586 | 3,159 | 31.11% |
 | Characters | 22,469 | 14,883 | 33.76% |
 | UTF-8 bytes | 22,475 | 14,883 | 33.78% |
+
+The subsequently added `read_files` schema is reported separately by the audit
+command and is not folded into this historical 24-tool before/after result.
 
 Required fields, defaults, enum values, and runtime behavior are unchanged.
 Common `owner`, `repo`, and `format` prose was minimized because their names,

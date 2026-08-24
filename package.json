@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test:response-format": "tsx scripts/test-response-format.ts",
+    "test:read-files": "tsx scripts/test-read-files.ts",
     "audit:schema": "tsx scripts/measure-schema-tokens.ts",
     "audit:tool-usage": "tsx scripts/audit-tool-usage.ts",
     "test:schema-routing": "tsx scripts/test-schema-routing.ts",
