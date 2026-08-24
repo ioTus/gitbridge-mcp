@@ -34,6 +34,11 @@ export const readFilesSchema = {
         description: "Content encoding; size budget uses decoded bytes",
         default: "utf-8",
       },
+      metadata_only: {
+        type: "boolean",
+        description: "Return only path, SHA, and byte size; content budget is not used",
+        default: false,
+      },
     },
     required: ["owner", "repo", "paths"],
   },
@@ -45,6 +50,7 @@ interface ReadFilesArgs {
   paths?: unknown;
   branch?: string;
   content_encoding?: string;
+  metadata_only?: boolean;
 }
 
 function topLevelError(message: string) {
@@ -61,7 +67,11 @@ export async function readFiles(
   const validated = validateOwnerRepo(args);
   if ("error" in validated) return topLevelError(validated.error);
   const { owner, repo } = validated;
-  const { branch = "main", content_encoding = "utf-8" } = args;
+  const {
+    branch = "main",
+    content_encoding = "utf-8",
+    metadata_only = false,
+  } = args;
 
   if (!Array.isArray(args.paths) || args.paths.length === 0) {
     return topLevelError("paths must contain between 1 and 20 file paths.");
@@ -76,6 +86,9 @@ export async function readFiles(
     return topLevelError(
       `Invalid content_encoding '${content_encoding}'. Must be 'utf-8' or 'base64'.`,
     );
+  }
+  if (typeof metadata_only !== "boolean") {
+    return topLevelError("metadata_only must be a boolean.");
   }
 
   const files: Array<Record<string, unknown>> = [];
@@ -105,6 +118,14 @@ export async function readFiles(
       }
 
       const sizeBytes = data.size;
+      if (metadata_only) {
+        files.push({
+          path: filePath,
+          sha: data.sha,
+          size_bytes: sizeBytes,
+        });
+        continue;
+      }
       if (decodedBytes + sizeBytes > READ_FILES_MAX_DECODED_BYTES) {
         files.push({
           path: filePath,
@@ -169,7 +190,14 @@ export async function readFiles(
   const inlineErrors = files.filter((file) => "error" in file).length;
   logToolCall(
     "read_files",
-    { owner, repo, paths: args.paths, branch, content_encoding },
+    {
+      owner,
+      repo,
+      paths: args.paths,
+      branch,
+      content_encoding,
+      metadata_only,
+    },
     "success",
     `${files.length} paths, ${inlineErrors} inline errors, ${decodedBytes} decoded bytes`,
   );

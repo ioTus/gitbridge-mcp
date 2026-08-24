@@ -12,7 +12,7 @@ const text = (value: string, isError = false) => ({
 });
 const responseText = (result: ReturnType<typeof text>) => result.content[0].text;
 
-assert.equal(allToolSchemas.length, 25);
+assert.equal(allToolSchemas.length, 21);
 for (const schema of allToolSchemas) {
   assert.deepEqual(schema.inputSchema.properties.format.enum, ["compact", "pretty"]);
   assert.equal(schema.inputSchema.properties.format.default, "compact");
@@ -59,9 +59,7 @@ const error = text("Error: unchanged\ntext", true);
 assert.strictEqual(formatToolResponse("write_file", error, "compact"), error);
 
 const representativeResponses: Record<string, string> = {
-  read_file: `sha: ${fullSha}\n\nline one\n  line two`,
   read_files: `[\n  {\n    "path": "a.ts",\n    "sha": "${fullSha}",\n    "content": "line one\\n  line two"\n  }\n]`,
-  write_file: `✅ Writing to: o/r\nFile 'a.ts' created successfully.\nCommit SHA: ${fullSha}\nBranch: main`,
   push_multiple_files: `✅ Writing to: o/r\nSuccessfully pushed 2 files in a single commit.\nFiles: a.ts, b.ts\nCommit SHA: ${fullSha}\nBranch: main`,
   list_files: `[{"name":"a.ts","path":"a.ts","type":"file"}]`,
   create_issue: "✅ Writing to: o/r\nIssue created successfully.\nNumber: #7\nTitle: Fix\nURL: https://github.test/o/r/issues/7",
@@ -81,9 +79,7 @@ const representativeResponses: Record<string, string> = {
   get_file_diff: `Comparing 0123456...main\n--- MODIFIED: a.ts\n@@ -1 +1 @@\n-old\n+new`,
   get_project_board: "# Roadmap\nURL: https://github.test/orgs/o/projects/1\n\n## Todo (1)\n- Issue #7: Fix",
   move_issue_to_column: '✅ Moved issue #7 to "Done" on project #1',
-  patch_file: `✅ Writing to: o/r\n{\n  "path": "a.ts",\n  "commit_sha": "${fullSha}"\n}`,
   patch_multiple_files: `✅ Writing to: o/r\n{\n  "files": ["a.ts"],\n  "commit_sha": "${fullSha}"\n}`,
-  check_file_status: `{\n  "exists": true,\n  "sha": "${fullSha}"\n}`,
 };
 
 assert.deepEqual(

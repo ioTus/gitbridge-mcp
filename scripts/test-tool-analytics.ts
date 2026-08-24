@@ -76,8 +76,12 @@ assert(
   "local JSONL never persists error text",
 );
 const knownLocalEntry = buildToolCallLogEntry({
-  tool: "read_file",
-  args: { owner: "o".repeat(80), repo: "r".repeat(160) },
+  tool: "read_files",
+  args: {
+    owner: "o".repeat(80),
+    repo: "r".repeat(160),
+    paths: ["README.md"],
+  },
   outcome: "success",
   duration_ms: 1,
 });

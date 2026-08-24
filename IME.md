@@ -40,19 +40,15 @@ If a user reports "GitBridge tools stopped working" / "the connector is broken" 
 
 *Updated by Replit Agent with each build.*
 
-<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in README.md and replit.md. Tool count: 25 -->
+<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in README.md and replit.md. Tool count: 21 -->
 ### Live (V2):
 
 | Tool | Category | What it does |
 |------|----------|-------------|
-| `read_file` | File Tools | Read file contents. Supports `content_encoding: "base64"` for binary files, which returns `mime_type` and `size_bytes` metadata alongside content. |
-| `read_files` | File Tools | Read up to 20 files in order with SHAs and inline errors. A 256 KiB decoded-content budget protects caller context; skipped content still returns SHA and size. |
-| `write_file` | File Tools | Create or update a single file. Supports `content_encoding: "base64"` for binary content. |
+| `read_files` | File Tools | Read up to 20 files in order with SHAs and inline errors, or set `metadata_only: true` for path/SHA/size only with no budget accounting. A 256 KiB decoded-content budget protects caller context for content reads. |
 | `push_multiple_files` | File Tools | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
 | `list_files` | File Tools | List files and folders at a path in a GitHub repository |
-| `patch_file` | File Tools | Apply targeted edits (replace, insert_after, insert_before, delete) to a file without sending full content. Atomic — all operations succeed or none apply. |
 | `patch_multiple_files` | File Tools | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |
-| `check_file_status` | File Tools | Return file metadata (SHA, size, last modified) without content. Use to verify if a file changed before re-reading. |
 | `create_issue` | Issue Tools | Create a new GitHub Issue in a repository |
 | `update_issue` | Issue Tools | Update an existing GitHub Issue (change status, labels, title, or body) |
 | `list_issues` | Issue Tools | List GitHub Issues in a repository with optional filters |
@@ -74,7 +70,7 @@ If a user reports "GitBridge tools stopped working" / "the connector is broken" 
 All tools require `owner` and `repo` parameters except `create_repo`
 (which takes `name` and optional `org`) and `get_project_board`
 (where `repo` is optional — only `owner` and `project_number` are required).
-All 25 tools accept optional `format: "compact" | "pretty"`; `compact` is the
+All 21 tools accept optional `format: "compact" | "pretty"`; `compact` is the
 default. Successful responses are compact by default, while errors remain
 verbose and actionable regardless of format. Compact formatting preserves
 content payloads and load-bearing identifiers, including full commit SHAs; use

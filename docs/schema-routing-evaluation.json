@@ -1,0 +1,16 @@
+{
+  "method": "Internal model evaluator received the complete 21-tool advertised schema and fixed routing scenarios after the singular-tool retirement.",
+  "results": [
+    {"id": "read", "expected": "read_files", "selected": "read_files"},
+    {"id": "single-patch", "expected": "patch_multiple_files", "selected": "patch_multiple_files"},
+    {"id": "multi-patch", "expected": "patch_multiple_files", "selected": "patch_multiple_files"},
+    {"id": "single-write", "expected": "push_multiple_files", "selected": "push_multiple_files"},
+    {"id": "multi-write", "expected": "push_multiple_files", "selected": "push_multiple_files"},
+    {"id": "metadata", "expected": "read_files", "selected": "read_files"},
+    {"id": "issue-read", "expected": "read_issue", "selected": "read_issue"},
+    {"id": "issue-update", "expected": "update_issue", "selected": "update_issue"},
+    {"id": "issue-comment", "expected": "add_issue_comment", "selected": "add_issue_comment"},
+    {"id": "issue-list", "expected": "list_issues", "selected": "list_issues"}
+  ],
+  "summary": "10/10 expected selections at 21 tools; retired singular names were never selected."
+}

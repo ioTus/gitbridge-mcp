@@ -9,9 +9,7 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { readFile } from "./tools/read_file.js";
 import { readFiles } from "./tools/read_files.js";
-import { writeFile } from "./tools/write_file.js";
 import { pushMultipleFiles } from "./tools/push_multiple_files.js";
 import { listFiles } from "./tools/list_files.js";
 import { createIssue } from "./tools/create_issue.js";
@@ -31,9 +29,8 @@ import { listBranches } from "./tools/list_branches.js";
 import { getFileDiff } from "./tools/get_file_diff.js";
 import { getProjectBoard } from "./tools/get_project_board.js";
 import { moveIssueToColumn } from "./tools/move_issue_to_column.js";
-import { patchFile } from "./tools/patch_file.js";
 import { patchMultipleFiles } from "./tools/patch_multiple_files.js";
-import { checkFileStatus } from "./tools/check_file_status.js";
+import { dispatchMissingTool } from "./tools/retired.js";
 import { allToolSchemas } from "./tools/registry.js";
 import { formatToolResponse, splitResponseFormat } from "./tools/response-format.js";
 import { checkGithubStatus, getLastSuccessfulOperation, getUptimeSeconds } from "./lib/health.js";
@@ -54,9 +51,7 @@ import {
 const allTools = allToolSchemas;
 
 const toolHandlers: Record<string, (args: any) => Promise<any>> = {
-  read_file: readFile,
   read_files: readFiles,
-  write_file: writeFile,
   push_multiple_files: pushMultipleFiles,
   list_files: listFiles,
   create_issue: createIssue,
@@ -76,9 +71,7 @@ const toolHandlers: Record<string, (args: any) => Promise<any>> = {
   get_file_diff: getFileDiff,
   get_project_board: getProjectBoard,
   move_issue_to_column: moveIssueToColumn,
-  patch_file: patchFile,
   patch_multiple_files: patchMultipleFiles,
-  check_file_status: checkFileStatus,
 };
 
 function createMcpServer(): Server {
@@ -110,19 +103,12 @@ function createMcpServer(): Server {
         : String(requestIdRaw);
 
     if (!handler) {
-      scheduleToolActivity({
-        tool: name,
-        args: handlerArgs,
-        outcome: "error",
-        duration_ms: 0,
-        error_class: "validation",
-        session: sessionId,
-        request_id: requestId,
-      });
-      return {
-        content: [{ type: "text", text: `Unknown tool: ${name}` }],
-        isError: true,
-      };
+      return dispatchMissingTool(
+        name,
+        handlerArgs,
+        { session: sessionId, request_id: requestId },
+        scheduleToolActivity,
+      );
     }
     try {
       const result = await handler(handlerArgs);

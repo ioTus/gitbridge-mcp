@@ -27,21 +27,15 @@ export interface ToolAllowList {
 const OR = ["owner", "repo"] as const;
 
 export const TOOL_ALLOW_LISTS: Record<string, ToolAllowList> = {
-  read_file: {
-    keep: [...OR, "path", "branch", "content_encoding"],
-    digest: [],
-  },
   read_files: {
-    keep: [...OR, "paths", "branch", "content_encoding"],
+    keep: [
+      ...OR,
+      "paths",
+      "branch",
+      "content_encoding",
+      "metadata_only",
+    ],
     digest: [],
-  },
-  write_file: {
-    keep: [...OR, "path", "branch", "content_encoding"],
-    digest: ["content", "commit_message"],
-  },
-  patch_file: {
-    keep: [...OR, "path", "branch"],
-    digest: ["operations"],
   },
   patch_multiple_files: {
     keep: [...OR, "branch"],
@@ -52,10 +46,6 @@ export const TOOL_ALLOW_LISTS: Record<string, ToolAllowList> = {
     digest: ["files", "commit_message"],
   },
   list_files: {
-    keep: [...OR, "path", "branch"],
-    digest: [],
-  },
-  check_file_status: {
     keep: [...OR, "path", "branch"],
     digest: [],
   },

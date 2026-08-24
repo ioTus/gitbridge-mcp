@@ -21,6 +21,10 @@ const parse = (result: any) => JSON.parse(result.content[0].text);
 
 assert.equal(readFilesSchema.inputSchema.properties.paths.minItems, 1);
 assert.equal(readFilesSchema.inputSchema.properties.paths.maxItems, 20);
+assert.equal(
+  readFilesSchema.inputSchema.properties.metadata_only.default,
+  false,
+);
 
 const contentByPath = new Map([
   ["IME.md", Buffer.from("# IME")],
@@ -141,6 +145,43 @@ assert.deepEqual(parse(unavailableLarge), [
   },
 ]);
 
+const metadataPaths = Array.from(
+  { length: 20 },
+  (_, index) => `large-${index}.bin`,
+);
+const metadataOnly = await readFiles(
+  {
+    owner: "ioTus",
+    repo: "gitbridge-mcp",
+    paths: metadataPaths,
+    metadata_only: true,
+  },
+  (async ({ path }: any) => ({
+    data: {
+      type: "file",
+      path,
+      sha: sha(path),
+      size: READ_FILES_MAX_DECODED_BYTES,
+      content: "",
+      encoding: "none",
+    },
+  })) as any,
+);
+assert.deepEqual(
+  parse(metadataOnly),
+  metadataPaths.map((path) => ({
+    path,
+    sha: sha(path),
+    size_bytes: READ_FILES_MAX_DECODED_BYTES,
+  })),
+);
+assert.ok(
+  parse(metadataOnly).every(
+    (file: any) =>
+      file.content === undefined && file.error === undefined,
+  ),
+);
+
 for (const args of [
   { owner: "ioTus", repo: "gitbridge-mcp", paths: [] },
   {
@@ -154,6 +195,12 @@ for (const args of [
     repo: "gitbridge-mcp",
     paths: ["a"],
     content_encoding: "invalid",
+  },
+  {
+    owner: "ioTus",
+    repo: "gitbridge-mcp",
+    paths: ["a"],
+    metadata_only: "yes",
   },
 ]) {
   const invalid = await readFiles(args);

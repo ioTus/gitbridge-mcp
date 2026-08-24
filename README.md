@@ -154,7 +154,7 @@ Your GitHub PAT determines the **blast radius** — every repo the PAT can acces
 
 ## Tools
 
-All 25 tools accept an optional `format` parameter: `compact` (the default) or
+All 21 tools accept an optional `format` parameter: `compact` (the default) or
 `pretty`. Successful responses use the compact form by default; pass
 `format: "pretty"` when an expanded, human-readable layout is needed. Errors
 remain verbose and actionable regardless of format. Compact formatting never
@@ -191,19 +191,15 @@ messages. Production PostgreSQL uses required TLS; development uses Replit's
 local database transport. The client has a maximum two-connection pool and the
 raw-event table has one timestamp index.
 
-<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 25 -->
+<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 21 -->
 ### File Tools
 
 | Tool | Description |
 |------|-------------|
-| `read_file` | Read file contents. Supports `content_encoding: "base64"` for binary files, which returns `mime_type` and `size_bytes` metadata alongside content. |
-| `read_files` | Read up to 20 files in order with SHAs and inline per-file errors. A 256 KiB decoded-content budget protects caller context; files that do not fit return SHA and size without content. |
-| `write_file` | Create or update a single file. Supports `content_encoding: "base64"` for binary content. |
+| `read_files` | Read up to 20 files in order with SHAs and inline per-file errors, or set `metadata_only: true` to return only path/SHA/size without budget accounting. A 256 KiB decoded-content budget protects caller context for content reads. |
 | `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
 | `list_files` | List files and folders at a path in a GitHub repository |
-| `patch_file` | Apply targeted edits (replace, insert_after, insert_before, delete) to a file without sending full content. Atomic — all operations succeed or none apply. |
 | `patch_multiple_files` | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |
-| `check_file_status` | Return file metadata (SHA, size, last modified) without content. Use to verify if a file changed before re-reading. |
 
 ### Issue Tools
 
@@ -376,7 +372,7 @@ the MCP bridge. You can work across multiple repos in a single session.
 
 Before performing any operation on a repo, read its IME.md file
 (if it exists) to pick up project-specific rules and context:
-  call read_file with owner=OWNER repo=REPO path=IME.md
+  call read_files with owner=OWNER repo=REPO paths=["IME.md"]
 
 Always confirm the target owner/repo before any write operation.
 When switching between repos, announce the switch clearly.

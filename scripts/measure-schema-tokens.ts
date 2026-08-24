@@ -10,7 +10,8 @@ import { pathToFileURL } from "node:url";
 import { getEncoding } from "js-tiktoken";
 import { allToolSchemas } from "../server/tools/registry.js";
 
-const baselineCommit = "746f6fd";
+const issue44BaselineCommit = "746f6fd";
+const retirementBaselineCommit = "8655251";
 const serialization =
   "JSON.stringify of the ordered ListTools array with name, description, and inputSchema";
 const tokenizer = "js-tiktoken cl100k_base";
@@ -69,60 +70,96 @@ function measure(tools: AdvertisedTool[]) {
   };
 }
 
-const baselineTools = await loadBaselineTools(baselineCommit);
+const baselineTools = await loadBaselineTools(issue44BaselineCommit);
+const retirementBaselineTools = await loadBaselineTools(
+  retirementBaselineCommit,
+);
 const currentTools = advertisedOnly(allToolSchemas);
 const baseline = measure(baselineTools);
+const retirementBaseline = measure(retirementBaselineTools);
 const current = measure(currentTools);
-const currentByName = new Map(currentTools.map((tool) => [tool.name, tool]));
-const comparableCurrentTools = baselineTools
-  .map((tool) => currentByName.get(tool.name))
+const retirementBaselineByName = new Map(
+  retirementBaselineTools.map((tool) => [tool.name, tool]),
+);
+const issue44ComparableTools = baselineTools
+  .map((tool) => retirementBaselineByName.get(tool.name))
   .filter((tool): tool is AdvertisedTool => tool !== undefined);
-const comparableCurrent = measure(comparableCurrentTools);
-const tokenReductionPercent =
-  ((baseline.total.tokens - comparableCurrent.total.tokens) /
+const issue44Comparable = measure(issue44ComparableTools);
+const issue44ReductionPercent =
+  ((baseline.total.tokens - issue44Comparable.total.tokens) /
     baseline.total.tokens) *
   100;
-
-const missingTools = baselineTools
-  .map((tool) => tool.name)
-  .filter((name) => !(name in current.perToolTokens));
-const unexpectedTools = currentTools
+const retirementReductionPercent =
+  ((retirementBaseline.total.tokens - current.total.tokens) /
+    retirementBaseline.total.tokens) *
+  100;
+const addedSinceIssue44 = retirementBaselineTools
   .map((tool) => tool.name)
   .filter((name) => !(name in baseline.perToolTokens));
+const retiredTools = retirementBaselineTools
+  .map((tool) => tool.name)
+  .filter((name) => !(name in current.perToolTokens));
 
 console.log(
   JSON.stringify(
     {
-      methodology: { baselineCommit, tokenizer, serialization },
-      baseline: baseline.total,
-      currentComparable: comparableCurrent.total,
-      currentWithAddedTools: current.total,
-      tokenReductionPercent: Number(tokenReductionPercent.toFixed(2)),
-      addedTools: Object.fromEntries(
-        unexpectedTools.map((name) => [name, current.perToolTokens[name]]),
-      ),
-      perTool: Object.fromEntries(
-        Object.entries(baseline.perToolTokens).map(([name, tokens]) => [
-          name,
-          {
-            baselineTokens: tokens,
-            currentTokens: current.perToolTokens[name],
-          },
-        ]),
-      ),
+      methodology: {
+        issue44BaselineCommit,
+        retirementBaselineCommit,
+        tokenizer,
+        serialization,
+      },
+      issue44: {
+        baseline: baseline.total,
+        optimizedComparable: issue44Comparable.total,
+        tokenReductionPercent: Number(issue44ReductionPercent.toFixed(2)),
+        addedTools: Object.fromEntries(
+          addedSinceIssue44.map((name) => [
+            name,
+            retirementBaseline.perToolTokens[name],
+          ]),
+        ),
+      },
+      retirement: {
+        before: retirementBaseline.total,
+        after: current.total,
+        beforeToolCount: retirementBaselineTools.length,
+        afterToolCount: currentTools.length,
+        retiredTools,
+        tokenReductionPercent: Number(
+          retirementReductionPercent.toFixed(2),
+        ),
+      },
     },
     null,
     2,
   ),
 );
 
-if (missingTools.length > 0) {
-  console.error({ missingTools });
+const expectedRetiredTools = [
+  "read_file",
+  "write_file",
+  "patch_file",
+  "check_file_status",
+].sort();
+if (
+  JSON.stringify([...retiredTools].sort()) !==
+  JSON.stringify(expectedRetiredTools)
+) {
+  console.error({ expectedRetiredTools, retiredTools });
   process.exit(1);
 }
-if (tokenReductionPercent < 30) {
+if (issue44ReductionPercent < 30) {
   console.error(
-    `Schema reduction ${tokenReductionPercent.toFixed(2)}% is below the 30% target.`,
+    `Issue #44 schema reduction ${issue44ReductionPercent.toFixed(2)}% is below the 30% target.`,
   );
+  process.exit(1);
+}
+if (
+  retirementBaselineTools.length !== 25 ||
+  currentTools.length !== 21 ||
+  retirementReductionPercent <= 0
+) {
+  console.error("Issue #45 retirement audit did not produce 25 -> 21.");
   process.exit(1);
 }

@@ -3,6 +3,7 @@ import {
   digestField,
   TOOL_ALLOW_LISTS,
 } from "../server/lib/tool-log-redaction.js";
+import { allToolSchemas } from "../server/tools/registry.js";
 
 let failures = 0;
 function assert(cond: unknown, msg: string) {
@@ -14,16 +15,14 @@ function assert(cond: unknown, msg: string) {
   }
 }
 
-console.log("Test: write_file — actual schema fields kept/digested");
+console.log("Test: push_multiple_files — actual schema fields kept/digested");
 const bigString = "x".repeat(10 * 1024);
-const w = redactToolArgs("write_file", {
+const w = redactToolArgs("push_multiple_files", {
   owner: "ioTus",
   repo: "gitbridge-mcp",
-  path: "server/routes.ts",
   branch: "main",
-  content: "raw file body that should never be persisted",
+  files: [{ path: "server/routes.ts", content: "raw file body" }],
   commit_message: "raw commit message that should never be persisted",
-  content_encoding: "utf-8",
   token: "ghp_supersecret",
   secret: "shh",
   password: "hunter2",
@@ -35,10 +34,8 @@ const w = redactToolArgs("write_file", {
 });
 const wJson = JSON.stringify(w);
 assert(w.owner === "ioTus", "owner kept");
-assert(w.path === "server/routes.ts", "path kept");
 assert(w.branch === "main", "branch kept");
-assert(w.content_encoding === "utf-8", "content_encoding kept");
-assert(typeof w.content === "object" && (w.content as any).sha256_prefix, "content digested");
+assert(typeof w.files === "object" && (w.files as any).sha256_prefix, "files digested");
 assert(typeof w.commit_message === "object" && (w.commit_message as any).sha256_prefix, "commit_message digested (correct schema name)");
 assert(!("token" in w), "token dropped");
 assert(!("secret" in w), "secret dropped");
@@ -53,23 +50,22 @@ assert(!wJson.includes("raw commit message"), "raw commit_message not in output"
 assert(!wJson.includes("ghp_supersecret"), "raw token not in output");
 assert(!wJson.includes(bigString), "big payload not in output");
 
-console.log("\nTest: stray raw 'message' key (legacy/unknown field) is dropped");
-const stray = redactToolArgs("write_file", {
-  owner: "o", repo: "r", path: "p", content: "x",
+console.log("\nTest: stray raw 'message' key is dropped");
+const stray = redactToolArgs("push_multiple_files", {
+  owner: "o", repo: "r", files: [{ path: "p", content: "x" }],
   message: "raw legacy message that should never be persisted",
 });
 assert(!("message" in stray), "raw 'message' key dropped (not in any allow-list)");
 assert(!JSON.stringify(stray).includes("raw legacy message"), "raw 'message' value not in output");
 
 console.log("\nTest: 4KB cap applies to digest fields too");
-const oversizedDigest = redactToolArgs("write_file", {
+const oversizedDigest = redactToolArgs("push_multiple_files", {
   owner: "o",
   repo: "r",
-  path: "p",
-  content: "ok small",
+  files: [{ path: "p", content: "ok small" }],
   commit_message: "y".repeat(10 * 1024),
 });
-assert(typeof oversizedDigest.content === "object", "small content still digested");
+assert(typeof oversizedDigest.files === "object", "small files payload still digested");
 assert(!("commit_message" in oversizedDigest), "oversized commit_message dropped, not digested");
 
 console.log("\nTest: create_branch — branch_name and from_branch (actual schema)");
@@ -165,23 +161,24 @@ const cr = redactToolArgs("create_repo", {
 assert(cr.name === "x" && cr.org === "ioTus" && cr.private === true && cr.auto_init === false, "create_repo flags kept");
 assert(typeof cr.description === "object", "description digested");
 
-console.log("\nTest: read_file — content not in allow-list, dropped");
-const r = redactToolArgs("read_file", {
-  owner: "o", repo: "r", path: "x", branch: "main",
-  content: "should never appear",
-});
-assert(!("content" in r), "read_file: content dropped");
-
 console.log("\nTest: read_files — paths retained, content dropped");
 const rs = redactToolArgs("read_files", {
   owner: "o", repo: "r", paths: ["a", "b"], branch: "main",
-  content_encoding: "utf-8", content: "should never appear",
+  content_encoding: "utf-8", metadata_only: true,
+  content: "should never appear",
 });
 assert(Array.isArray(rs.paths) && rs.paths.length === 2, "read_files: paths kept");
+assert(rs.metadata_only === true, "read_files: metadata_only kept");
 assert(!("content" in rs), "read_files: content dropped");
 
 console.log("\nTest: unknown tool name — empty record");
 assert(JSON.stringify(redactToolArgs("nonexistent_tool", { owner: "o" })) === "{}", "unknown tool returns empty");
+for (const retired of ["read_file", "write_file", "patch_file", "check_file_status"]) {
+  assert(
+    JSON.stringify(redactToolArgs(retired, { owner: "o", repo: "r" })) === "{}",
+    `${retired}: retired tool returns empty`,
+  );
+}
 
 console.log("\nTest: digest helper");
 const d = digestField("hello world");
@@ -189,14 +186,7 @@ assert(d.length === 11, "digest byte length");
 assert(/^[0-9a-f]{8}$/.test(d.sha256_prefix), "digest 8 hex chars");
 
 console.log("\nTest: every registered tool has an allow-list");
-const registeredTools = [
-  "read_file","read_files","write_file","push_multiple_files","list_files","create_issue",
-  "update_issue","list_issues","add_issue_comment","read_issue","search_files",
-  "move_file","delete_file","queue_write","flush_queue","get_recent_commits",
-  "create_repo","create_branch","list_branches","get_file_diff",
-  "get_project_board","move_issue_to_column","patch_file",
-  "patch_multiple_files","check_file_status",
-];
+const registeredTools = allToolSchemas.map((schema) => schema.name);
 for (const t of registeredTools) {
   assert(TOOL_ALLOW_LISTS[t] !== undefined, `${t} has allow-list`);
 }
