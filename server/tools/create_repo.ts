@@ -2,23 +2,24 @@ import { octokit, logToolCall } from "../lib/github.js";
 
 export const createRepoSchema = {
   name: "create_repo",
-  description: "Create a new GitHub repository on a personal account or within an organization",
+  category: "repo",
+  description: "Create a user or organization repository.",
   inputSchema: {
     type: "object" as const,
     properties: {
-      name: { type: "string", description: "Repository name (no spaces; use hyphens)" },
+      name: { type: "string", description: "Repository name; use hyphens, not spaces." },
       org: {
         type: "string",
-        description: "Organization name. If omitted, the repo is created on the authenticated user's personal account.",
+        description: "Organization; omit for the authenticated user.",
       },
-      description: { type: "string", description: "Short description of the repository" },
+      description: { type: "string", description: "Repository description." },
       private: {
         type: "boolean",
-        description: "Whether the repository is private (default: true)",
+        description: "Create a private repository.",
       },
       auto_init: {
         type: "boolean",
-        description: "Initialize with an empty README (default: false). Set to true if you want to write files immediately after creation.",
+        description: "Create an initial README.",
       },
     },
     required: ["name"],
@@ -64,18 +65,11 @@ export async function createRepo(args: {
       content: [
         {
           type: "text",
-          text: [
-            `✅ Writing to: ${repoData.full_name}`,
-            `Repository created successfully.`,
-            ``,
-            `Full name:      ${repoData.full_name}`,
-            `URL:            ${repoData.html_url}`,
-            `Clone URL:      ${repoData.clone_url}`,
-            `Default branch: ${repoData.default_branch}`,
-            `Visibility:     ${repoData.private ? "private" : "public"}`,
-            ``,
-            `You can now write files to this repo using write_file or push_multiple_files with owner="${repoData.owner.login}" repo="${repoData.name}".`,
-          ].join("\n"),
+          text: JSON.stringify({
+            repository: repoData.full_name,
+            url: repoData.html_url,
+            default_branch: repoData.default_branch,
+          }),
         },
       ],
     };

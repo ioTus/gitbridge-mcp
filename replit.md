@@ -1,7 +1,7 @@
 # gitbridge-mcp
 
 ## Overview
-MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai) to any GitHub repository. V2 multi-repo mode — Claude passes owner/repo on every tool call.
+MCP (Model Context Protocol) bridge server that connects AI assistants to GitHub repositories. V2 multi-repo mode — clients pass owner/repo on every tool call.
 
 ## Architecture
 - **Server**: Express.js with MCP SDK (Streamable HTTP + legacy SSE transport)
@@ -13,17 +13,16 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 ## Key Files
 - `server/routes.ts` — MCP server setup, OAuth token endpoint, Streamable HTTP + SSE endpoints, CORS, auth middleware, tool registration
 - `server/lib/github.ts` — Octokit client, shared `validateOwnerRepo()` helper, `ownerRepoParams` schema fragment
-<!-- TOOLS:START -->
+<!-- TOOLS:START — generated; do not edit; run `npm run docs:tools` -->
 - `server/tools/` — Individual tool implementations (22 active + 4 permanently retired compatibility names)
-  - File Tools: `read_files.ts`, `session_bootstrap.ts`, `patch_multiple_files.ts`, `push_multiple_files.ts`, `list_files.ts` (content_encoding: base64 supported on read_files, push_multiple_files, queue_write)
-  - Retired compatibility names: `read_file`, `write_file`, `patch_file`, `check_file_status` return permanent migration errors without being advertised.
+  - File Tools: `read_files.ts`, `session_bootstrap.ts`, `push_multiple_files.ts`, `list_files.ts`, `patch_multiple_files.ts`
   - Issue Tools: `create_issue.ts`, `update_issue.ts`, `list_issues.ts`, `add_issue_comment.ts`, `read_issue.ts`
   - Search & History: `search_files.ts`, `get_recent_commits.ts`, `get_file_diff.ts`
-  - Branch Management: `create_branch.ts`, `list_branches.ts`
   - Advanced File Operations: `move_file.ts`, `delete_file.ts`, `queue_write.ts`, `flush_queue.ts`
   - Repo Management: `create_repo.ts`
+  - Branch Management: `create_branch.ts`, `list_branches.ts`
   - Project Boards: `get_project_board.ts`, `move_issue_to_column.ts`
-  - Stubs: `phase2_stubs.ts` ()
+  - Retired compatibility names: `read_file`, `write_file`, `patch_file`, `check_file_status` return permanent migration errors without being advertised.
 <!-- TOOLS:END -->
 - `server/tools/registry.ts` — Tool registration with `allToolSchemas`, `activeToolSchemas`, `phase2ToolSchemas` exports
 - `server/tools/response-format.ts` — Shared `format: compact|pretty` schema injection and compact-by-default success response formatting. Errors and content payloads remain intact.
@@ -31,7 +30,7 @@ MCP (Model Context Protocol) bridge server that connects Claude Chat (claude.ai)
 - `IME.md` — Spoke bootstrap (replaces CLAUDE.md), hub pointer to ioTus/ime, tool reference table
 - `IME-AGENTS.md` — Multi-agent collaboration index (replaces AGENTS.md)
 - `IME-AGENTS-replit.md` — Replit Agent workspace boundaries (replaces AGENTS-replit.md)
-- `client/src/pages/Home.tsx` — Status dashboard with tool categories, project scoping template
+- `client/src/pages/Home.tsx` — Status dashboard with tool categories and a minimal repository-context prompt
 
 ## Environment Variables
 - `GITHUB_PERSONAL_ACCESS_TOKEN` — GitHub PAT (fine-grained tokens recommended; classic PATs need `repo` + `project` scopes). Required, server exits if missing.
@@ -116,10 +115,10 @@ Supplementary (only after the request reached a tool): `logs/tools.log` is the l
 
 ## V2 Changes
 - Multi-repo mode: all tools accept `owner` and `repo` params (no hardcoded env vars)
-- Response envelopes: all tools accept optional `format: "compact" | "pretty"` and default to compact successes; errors remain verbose. The former `✅ Writing to:` banner is available only in legacy/pretty handler output.
+- Response envelopes: all tools accept optional `format: "compact" | "pretty"` and default to compact successes; errors remain verbose. Success responses contain no decorative banners.
 - 6 new tools: search_files, move_file, delete_file, queue_write, flush_queue, get_recent_commits
 - Queue: in-memory Map keyed by `owner/repo`, last-write-wins dedup, resets on server restart
-- Project scoping: two approaches documented — Option A (one Project per repo) and Option B (multi-repo with IME.md)
+- Repository context follows the hub/spoke model: clients use a minimal pointer, while `IME.md` and its maintained hub provide durable rules.
 - Security: PAT scoping best practices added to README, OAuth audit completed (Issue #6)
 
 ## Binary File Support (Issue #30)

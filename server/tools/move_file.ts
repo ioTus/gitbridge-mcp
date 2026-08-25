@@ -2,15 +2,16 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 
 export const moveFileSchema = {
   name: "move_file",
-  description: "Move or rename a file. Reads from old path, writes to new path, then returns a GitHub link for the user to manually delete the original.",
+  category: "advanced",
+  description: "Copy a file to a new path or name; the original remains and must be deleted separately.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
       old_path: { type: "string", description: "Current file path" },
       new_path: { type: "string", description: "Destination file path" },
-      commit_message: { type: "string", description: "Commit message (auto-generated if not provided)" },
-      branch: { type: "string", description: "Branch name (default: main)", default: "main" },
+      commit_message: { type: "string", description: "Commit message; generated if omitted" },
+      branch: { type: "string", description: "Branch", default: "main" },
     },
     required: ["owner", "repo", "old_path", "new_path"],
   },
@@ -69,7 +70,11 @@ export async function moveFile(args: {
       content: [
         {
           type: "text",
-          text: `✅ Writing to: ${owner}/${repo}\nFile copied to '${new_path}'.\nCommit SHA: ${commitSha}\nBranch: ${branch}\n\nTo complete the move, delete the original here:\n${deleteUrl}\n— click the trash icon on that page.`,
+          text: JSON.stringify({
+            path: new_path,
+            commit_sha: commitSha,
+            source_delete_url: deleteUrl,
+          }),
         },
       ],
     };

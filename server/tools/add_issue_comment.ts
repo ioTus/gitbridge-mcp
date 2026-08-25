@@ -2,13 +2,14 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 
 export const addIssueCommentSchema = {
   name: "add_issue_comment",
-  description: "Add a comment to an existing GitHub Issue",
+  category: "issue",
+  description: "Add a comment to an issue.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
-      issue_number: { type: "number", description: "Issue number to comment on" },
-      body: { type: "string", description: "Comment text in markdown" },
+      issue_number: { type: "number", description: "Issue number." },
+      body: { type: "string", description: "Markdown comment." },
     },
     required: ["owner", "repo", "issue_number", "body"],
   },
@@ -30,7 +31,10 @@ export async function addIssueComment(args: { owner?: string; repo?: string; iss
       content: [
         {
           type: "text",
-          text: `✅ Writing to: ${owner}/${repo}\nComment added to issue #${issue_number}.\nComment URL: ${response.data.html_url}`,
+          text: JSON.stringify({
+            issue_number,
+            comment_url: response.data.html_url,
+          }),
         },
       ],
     };

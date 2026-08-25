@@ -2,22 +2,23 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 
 export const createIssueSchema = {
   name: "create_issue",
-  description: "Create a new GitHub Issue in a repository",
+  category: "issue",
+  description: "Create a GitHub issue.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
       title: { type: "string", description: "Issue title" },
-      body: { type: "string", description: "Issue description in markdown" },
+      body: { type: "string", description: "Markdown issue body." },
       labels: {
         type: "array",
         items: { type: "string" },
-        description: "Labels to apply (e.g. ['feature', 'backlog'])",
+        description: "Labels to apply.",
       },
       assignees: {
         type: "array",
         items: { type: "string" },
-        description: "GitHub usernames to assign",
+        description: "Assignee usernames.",
       },
     },
     required: ["owner", "repo", "title"],
@@ -47,7 +48,10 @@ export async function createIssue(args: {
       content: [
         {
           type: "text",
-          text: `✅ Writing to: ${owner}/${repo}\nIssue created successfully.\nNumber: #${response.data.number}\nTitle: ${response.data.title}\nURL: ${response.data.html_url}`,
+          text: JSON.stringify({
+            issue_number: response.data.number,
+            url: response.data.html_url,
+          }),
         },
       ],
     };

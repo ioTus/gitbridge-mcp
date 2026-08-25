@@ -3,26 +3,26 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 export const patchMultipleFilesSchema = {
   name: "patch_multiple_files",
   category: "file",
-  description: "Apply targeted text edits across multiple files in a single atomic commit. Supports replace, insert_after, insert_before, and delete operations per file. If any operation fails, none are applied.",
+  description: "Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
       branch: {
         type: "string",
-        description: "Branch name (default: main)",
+        description: "Branch name.",
         default: "main",
       },
       files: {
         type: "array",
-        description: "Array of files to patch. Each file specifies a path and its operations.",
+        description: "Files and their ordered edits.",
         items: {
           type: "object",
           properties: {
-            path: { type: "string", description: "File path in the repo" },
+            path: { type: "string", description: "Repository file path." },
             operations: {
               type: "array",
-              description: "Edit operations to apply sequentially to this file",
+              description: "Ordered edit operations.",
               items: {
                 type: "object",
                 properties: {
@@ -33,19 +33,19 @@ export const patchMultipleFilesSchema = {
                   },
                   old: {
                     type: "string",
-                    description: "For 'replace': exact string to find and replace (must be unique in the file)",
+                    description: "Unique exact text for replace.",
                   },
                   new: {
                     type: "string",
-                    description: "For 'replace': replacement string",
+                    description: "Replacement text.",
                   },
                   match: {
                     type: "string",
-                    description: "For 'insert_after', 'insert_before', 'delete': exact string to match (must be unique in the file)",
+                    description: "Unique exact text for insert or delete.",
                   },
                   content: {
                     type: "string",
-                    description: "For 'insert_after', 'insert_before': content to insert",
+                    description: "Text for insert operations.",
                   },
                 },
                 required: ["type"],
@@ -57,7 +57,7 @@ export const patchMultipleFilesSchema = {
       },
       commit_message: {
         type: "string",
-        description: "Commit message (auto-generated if not provided)",
+        description: "Commit message.",
       },
     },
     required: ["owner", "repo", "files"],
@@ -440,7 +440,7 @@ export async function patchMultipleFiles(args: {
     return {
       content: [{
         type: "text",
-        text: `✅ Writing to: ${owner}/${repo}\n${JSON.stringify(responseBody, null, 2)}`,
+         text: JSON.stringify(responseBody, null, 2),
       }],
     };
   } catch (error: any) {

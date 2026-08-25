@@ -3,14 +3,14 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 export const moveIssueToColumnSchema = {
   name: "move_issue_to_column",
   category: "project",
-  description: "Move an issue to a target column (status) on a GitHub Projects V2 board",
+  description: "Move a repository issue to a Projects V2 Status column.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
-      issue_number: { type: "number", description: "Issue number to move" },
-      column_name: { type: "string", description: "Target column name (e.g. 'In Progress', 'Done')" },
-      project_number: { type: "number", description: "Project number (visible in the project URL)" },
+      issue_number: { type: "number", description: "Issue number." },
+      column_name: { type: "string", description: "Target Status column." },
+      project_number: { type: "number", description: "Project number." },
     },
     required: ["owner", "repo", "issue_number", "column_name", "project_number"],
   },
@@ -130,19 +130,20 @@ export async function moveIssueToColumn(args: {
     let projectData: ProjectV2Data | null = null;
     let allItemNodes: ProjectV2Data["items"]["nodes"] = [];
 
-    async function fetchProject(query: string): Promise<ProjectV2Data | null> {
+    const fetchProject = async (query: string): Promise<ProjectV2Data | null> => {
       let cursor: string | null = null;
       let hasNextPage = true;
       let data: ProjectV2Data | null = null;
 
       while (hasNextPage) {
-        const result = await octokit.graphql<FindItemResponse>(query, {
+        const result: FindItemResponse = await octokit.graphql<FindItemResponse>(query, {
           owner,
           number: project_number,
           cursor,
         });
 
-        const proj = result.user?.projectV2 ?? result.organization?.projectV2;
+        const proj: ProjectV2Data | null | undefined =
+          result.user?.projectV2 ?? result.organization?.projectV2;
         if (!proj) return null;
 
         data = proj;
@@ -151,7 +152,7 @@ export async function moveIssueToColumn(args: {
         cursor = proj.items.pageInfo.endCursor;
       }
       return data;
-    }
+    };
 
     try {
       projectData = await fetchProject(FIND_ITEM_QUERY);
@@ -210,7 +211,11 @@ export async function moveIssueToColumn(args: {
       optionId: targetOption.id,
     });
 
-    const output = `✅ Moved issue #${issue_number} to "${targetOption.name}" on project #${project_number}`;
+    const output = JSON.stringify({
+      issue_number,
+      project_number,
+      status: targetOption.name,
+    });
     logToolCall("move_issue_to_column", { owner, issue_number, column_name, project_number }, "success", `moved to "${targetOption.name}"`);
     return { content: [{ type: "text", text: output }] };
   } catch (error: any) {

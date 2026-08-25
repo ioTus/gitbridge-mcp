@@ -2,24 +2,25 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 
 export const updateIssueSchema = {
   name: "update_issue",
-  description: "Update an existing GitHub Issue (change status, labels, title, or body)",
+  category: "issue",
+  description: "Update a GitHub issue.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
-      issue_number: { type: "number", description: "Issue number to update" },
+      issue_number: { type: "number", description: "Issue number." },
       title: { type: "string", description: "New title" },
-      body: { type: "string", description: "New body in markdown" },
+      body: { type: "string", description: "New Markdown body." },
       state: { type: "string", description: "'open' or 'closed'", enum: ["open", "closed"] },
       labels: {
         type: "array",
         items: { type: "string" },
-        description: "Replace existing labels",
+        description: "Replace all labels.",
       },
       assignees: {
         type: "array",
         items: { type: "string" },
-        description: "Replace existing assignees",
+        description: "Replace all assignees.",
       },
     },
     required: ["owner", "repo", "issue_number"],
@@ -58,7 +59,11 @@ export async function updateIssue(args: {
       content: [
         {
           type: "text",
-          text: `✅ Writing to: ${owner}/${repo}\nIssue #${issue_number} updated successfully.\nTitle: ${response.data.title}\nState: ${response.data.state}\nURL: ${response.data.html_url}`,
+          text: JSON.stringify({
+            issue_number,
+            state: response.data.state,
+            url: response.data.html_url,
+          }),
         },
       ],
     };

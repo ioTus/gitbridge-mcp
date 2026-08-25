@@ -2,15 +2,22 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 
 export const writeFileSchema = {
   name: "write_file",
-  description: "Create or update a single file in a GitHub repository",
+  category: "file",
+  description: "Create or replace one file in one commit. Supports UTF-8 or base64 content.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
-      path: { type: "string", description: "File path in the repo" },
-      content: { type: "string", description: "Full file content" },
-      commit_message: { type: "string", description: "Commit message (auto-generated if not provided)" },
-      branch: { type: "string", description: "Branch name (default: main)", default: "main" },
+      path: { type: "string", description: "File path" },
+      content: { type: "string", description: "Complete content; base64 when selected" },
+      commit_message: { type: "string", description: "Commit message; generated if omitted" },
+      branch: { type: "string", description: "Branch", default: "main" },
+      content_encoding: {
+        type: "string",
+        enum: ["utf-8", "base64"],
+        description: "Content encoding; base64 is pre-encoded binary",
+        default: "utf-8",
+      },
     },
     required: ["owner", "repo", "path", "content"],
   },
@@ -23,13 +30,19 @@ export async function writeFile(args: {
   content: string;
   commit_message?: string;
   branch?: string;
+  content_encoding?: string;
 }) {
   const validated = validateOwnerRepo(args);
   if ("error" in validated) {
     return { content: [{ type: "text", text: `Error: ${validated.error}` }], isError: true };
   }
   const { owner, repo } = validated;
-  const { path, content, branch = "main" } = args;
+  const { path, content, branch = "main", content_encoding = "utf-8" } = args;
+
+  if (content_encoding !== "utf-8" && content_encoding !== "base64") {
+    return { content: [{ type: "text", text: `Error: Invalid content_encoding '${content_encoding}'. Must be 'utf-8' or 'base64'.` }], isError: true };
+  }
+
   const commitMessage = args.commit_message || `Claude: update ${path}`;
 
   try {
@@ -42,21 +55,25 @@ export async function writeFile(args: {
     } catch {
     }
 
+    const encodedContent = content_encoding === "base64"
+      ? content
+      : Buffer.from(content).toString("base64");
+
     const response = await octokit.repos.createOrUpdateFileContents({
       owner, repo, path,
       message: commitMessage,
-      content: Buffer.from(content).toString("base64"),
+      content: encodedContent,
       branch,
       ...(sha ? { sha } : {}),
     });
 
     const commitSha = response.data.commit.sha;
-    logToolCall("write_file", { owner, repo, path, branch, commit_message: commitMessage }, "success", `commit: ${commitSha}`);
+    logToolCall("write_file", { owner, repo, path, branch, content_encoding, commit_message: commitMessage }, "success", `commit: ${commitSha}`);
     return {
       content: [
         {
           type: "text",
-          text: `✅ Writing to: ${owner}/${repo}\nFile '${path}' ${sha ? "updated" : "created"} successfully.\nCommit SHA: ${commitSha}\nBranch: ${branch}`,
+          text: JSON.stringify({ path, commit_sha: commitSha }),
         },
       ],
     };

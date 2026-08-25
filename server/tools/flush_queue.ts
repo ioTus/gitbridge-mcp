@@ -3,13 +3,14 @@ import { getWriteQueue } from "./queue_write.js";
 
 export const flushQueueSchema = {
   name: "flush_queue",
-  description: "Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue.",
+  category: "advanced",
+  description: "Commit queued writes for a branch in one commit. Add files first with queue_write.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
-      commit_message: { type: "string", description: "Commit message (auto-generated if not provided)" },
-      branch: { type: "string", description: "Branch name (default: main)", default: "main" },
+      commit_message: { type: "string", description: "Commit message; generated if omitted" },
+      branch: { type: "string", description: "Branch", default: "main" },
     },
     required: ["owner", "repo"],
   },
@@ -43,7 +44,11 @@ export async function flushQueue(args: {
     };
   }
 
-  const files = Array.from(repoQueue.entries()).map(([path, entry]) => ({ path, content: entry.content }));
+  const files = Array.from(repoQueue.entries()).map(([path, entry]) => ({
+    path,
+    content: entry.content,
+    content_encoding: entry.content_encoding,
+  }));
   const commitMessage = args.commit_message || `Claude: batch commit ${files.length} files`;
 
   try {
@@ -55,9 +60,13 @@ export async function flushQueue(args: {
 
     const tree = await Promise.all(
       files.map(async (file) => {
+        const blobContent = file.content_encoding === "base64"
+          ? file.content
+          : Buffer.from(file.content).toString("base64");
+
         const blob = await octokit.git.createBlob({
           owner, repo,
-          content: Buffer.from(file.content).toString("base64"),
+          content: blobContent,
           encoding: "base64",
         });
         return {
@@ -85,13 +94,13 @@ export async function flushQueue(args: {
       writeQueue.delete(key);
     }
 
-    const filePaths = files.map((f) => f.path).join(", ");
+    const filePaths = files.map((f) => f.path);
     logToolCall("flush_queue", { owner, repo, fileCount: files.length, branch, commit_message: commitMessage }, "success", `commit: ${newCommit.data.sha}`);
     return {
       content: [
         {
           type: "text",
-          text: `✅ Writing to: ${owner}/${repo}\nSuccessfully committed ${files.length} queued file${files.length === 1 ? "" : "s"} in a single commit.\nFiles: ${filePaths}\nCommit SHA: ${newCommit.data.sha}\nBranch: ${branch}`,
+          text: JSON.stringify({ paths: filePaths, commit_sha: newCommit.data.sha }),
         },
       ],
     };

@@ -2,7 +2,8 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 
 export const pushMultipleFilesSchema = {
   name: "push_multiple_files",
-  description: "Create or update multiple files in a single commit using the Git Data API",
+  category: "file",
+  description: "Create or replace multiple files in one commit. Each file may use UTF-8 or base64.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -12,15 +13,21 @@ export const pushMultipleFilesSchema = {
         items: {
           type: "object",
           properties: {
-            path: { type: "string", description: "File path in the repo" },
-            content: { type: "string", description: "Full file content" },
+            path: { type: "string", description: "File path" },
+            content: { type: "string", description: "Complete content; base64 when selected" },
+            content_encoding: {
+              type: "string",
+              enum: ["utf-8", "base64"],
+              description: "Content encoding; base64 is pre-encoded binary",
+              default: "utf-8",
+            },
           },
           required: ["path", "content"],
         },
-        description: "Array of files to create/update",
+        description: "Files to write",
       },
-      commit_message: { type: "string", description: "Commit message (auto-generated if not provided)" },
-      branch: { type: "string", description: "Branch name (default: main)", default: "main" },
+      commit_message: { type: "string", description: "Commit message; generated if omitted" },
+      branch: { type: "string", description: "Branch", default: "main" },
     },
     required: ["owner", "repo", "files"],
   },
@@ -29,7 +36,7 @@ export const pushMultipleFilesSchema = {
 export async function pushMultipleFiles(args: {
   owner?: string;
   repo?: string;
-  files: Array<{ path: string; content: string }>;
+  files: Array<{ path: string; content: string; content_encoding?: string }>;
   commit_message?: string;
   branch?: string;
 }) {
@@ -50,9 +57,14 @@ export async function pushMultipleFiles(args: {
 
     const tree = await Promise.all(
       files.map(async (file) => {
+        const encoding = file.content_encoding || "utf-8";
+        const blobContent = encoding === "base64"
+          ? file.content
+          : Buffer.from(file.content).toString("base64");
+
         const blob = await octokit.git.createBlob({
           owner, repo,
-          content: Buffer.from(file.content).toString("base64"),
+          content: blobContent,
           encoding: "base64",
         });
         return {
@@ -75,13 +87,13 @@ export async function pushMultipleFiles(args: {
 
     await octokit.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: newCommit.data.sha });
 
-    const filePaths = files.map((f) => f.path).join(", ");
+    const filePaths = files.map((f) => f.path);
     logToolCall("push_multiple_files", { owner, repo, files: filePaths, branch, commit_message: commitMessage }, "success", `commit: ${newCommit.data.sha}`);
     return {
       content: [
         {
           type: "text",
-          text: `✅ Writing to: ${owner}/${repo}\nSuccessfully pushed ${files.length} files in a single commit.\nFiles: ${filePaths}\nCommit SHA: ${newCommit.data.sha}\nBranch: ${branch}`,
+           text: JSON.stringify({ paths: filePaths, commit_sha: newCommit.data.sha }),
         },
       ],
     };

@@ -33,7 +33,7 @@ export interface ToolSchema {
   };
 }
 
-const toolSchemas: ToolSchema[] = [
+const toolSchemas = [
   readFilesSchema,
   sessionBootstrapSchema,
   pushMultipleFilesSchema,
@@ -56,8 +56,10 @@ const toolSchemas: ToolSchema[] = [
   getProjectBoardSchema,
   moveIssueToColumnSchema,
   patchMultipleFilesSchema,
-] as ToolSchema[];
+] satisfies ToolSchema[];
 
-export const allToolSchemas: ToolSchema[] = toolSchemas.map(addResponseFormat);
+export const allToolSchemas: ToolSchema[] = toolSchemas.map((schema) =>
+  addResponseFormat(schema),
+);
 export const activeToolSchemas = allToolSchemas;
 export const phase2ToolSchemas: ToolSchema[] = [];

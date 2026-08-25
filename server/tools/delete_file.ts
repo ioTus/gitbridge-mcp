@@ -2,14 +2,15 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 
 export const deleteFileSchema = {
   name: "delete_file",
-  description: "Delete a file from a GitHub repository. This is a destructive operation — the file will be permanently removed from the specified branch.",
+  category: "advanced",
+  description: "Delete a file from the selected branch.",
   inputSchema: {
     type: "object" as const,
     properties: {
       ...ownerRepoParams,
       path: { type: "string", description: "File path to delete" },
-      commit_message: { type: "string", description: "Commit message (auto-generated if not provided)" },
-      branch: { type: "string", description: "Branch name (default: main)", default: "main" },
+      commit_message: { type: "string", description: "Commit message; generated if omitted" },
+      branch: { type: "string", description: "Branch", default: "main" },
     },
     required: ["owner", "repo", "path"],
   },
@@ -52,7 +53,7 @@ export async function deleteFile(args: {
       content: [
         {
           type: "text",
-          text: `✅ Writing to: ${owner}/${repo}\nFile '${path}' deleted successfully.\nCommit SHA: ${commitSha}\nBranch: ${branch}`,
+          text: JSON.stringify({ path, commit_sha: commitSha }),
         },
       ],
     };

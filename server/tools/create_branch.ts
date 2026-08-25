@@ -9,7 +9,7 @@ export const createBranchSchema = {
     properties: {
       ...ownerRepoParams,
       branch_name: { type: "string", description: "New branch name" },
-      from_branch: { type: "string", description: "Source branch (default: main)", default: "main" },
+      from_branch: { type: "string", description: "Source branch", default: "main" },
     },
     required: ["owner", "repo", "branch_name"],
   },
@@ -49,14 +49,11 @@ export async function createBranch(args: {
       content: [
         {
           type: "text",
-          text: [
-            `✅ Writing to: ${owner}/${repo}`,
-            `Branch created: ${branch_name}`,
-            ``,
-            `Repository: ${owner}/${repo}`,
-            `Source:     ${from_branch} (${sha.slice(0, 7)})`,
-            `URL:        https://github.com/${owner}/${repo}/tree/${branch_name}`,
-          ].join("\n"),
+          text: JSON.stringify({
+            branch: branch_name,
+            source_sha: sha,
+            url: `https://github.com/${owner}/${repo}/tree/${branch_name}`,
+          }),
         },
       ],
     };

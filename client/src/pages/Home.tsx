@@ -454,7 +454,7 @@ export default function Home() {
             </Button>
           </div>
           <p className="text-muted-foreground">
-            MCP bridge server connecting Claude Chat to any GitHub repository via the Model Context Protocol.
+            MCP bridge server connecting AI assistants to GitHub repositories via the Model Context Protocol.
           </p>
         </div>
 
@@ -1092,15 +1092,15 @@ export default function Home() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Initial Setup</h2>
           <p className="text-sm text-muted-foreground">
-            Prerequisites before connecting Claude (one-time setup):
+            Prerequisites before connecting an AI assistant:
           </p>
           <div className="space-y-3">
             {[
               "Create a GitHub Personal Access Token with 'repo' scope",
               "Set GITHUB_PERSONAL_ACCESS_TOKEN in the Secrets tab",
               "Set OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET in the Secrets tab for authentication",
-              "Deploy this server (click Run in Replit)",
-              "Create a Claude Project with a system prompt that locks Claude to your owner/repo",
+              "Run the server to verify it locally, then publish it for a stable public endpoint",
+              "Configure your AI assistant with the published MCP URL and repository context",
             ].map((step, i) => (
               <div key={i} className="flex items-start gap-3">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-medium flex items-center justify-center">
@@ -1113,50 +1113,15 @@ export default function Home() {
 
           <Card className="bg-muted/50 mt-4">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Example Claude Project System Prompt</CardTitle>
+              <CardTitle className="text-sm">Minimal Repository Context Prompt</CardTitle>
             </CardHeader>
             <CardContent>
               <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed overflow-x-auto" data-testid="text-system-prompt-template">
-{`You are working exclusively in the GitHub repository:
-owner=YOUR_USERNAME repo=YOUR_REPO
+{`Use the GitHub repository hub declared by this project.
+Read IME.md at the repository root and follow its maintained pointers.
+Use session_bootstrap for startup context.
 
-Pass these values on every tool call to the GitHub MCP bridge.
-Never write to any other repository regardless of what the user asks.
-If asked to work in a different repo, tell the user to switch to
-the appropriate Claude Project for that repository.
-
-## Session Startup (do this every conversation)
-
-1. Read \`IME.md\` at the repo root — this is the spoke bootstrap
-   with repo identity and tool reference. Follow its hub pointer
-   to \`ioTus/ime\` for universal rules.
-2. Read \`IME-AGENTS.md\` and \`IME-AGENTS-replit.md\` — these define the
-   multi-agent collaboration workflow.
-3. Call \`list_files\` to confirm connectivity.
-4. Check \`docs/plans/\` for active plans (status: executing).
-5. Check open Issues with \`list_issues\`.
-6. Ask the user what they want to work on.
-
-## Critical Rules (always active, even before reading IME.md)
-
-- NEVER commit a file without showing the user the content first
-  and getting explicit approval.
-- NEVER overwrite an existing file without reading the current
-  version first.
-- NEVER delete a file without the user confirming the specific
-  file path.
-- For all other rules, defer to IME.md and IME-AGENTS.md in the repo.
-
-## Your Role
-
-You are the PM and strategist for this project. You write plans,
-specs, documentation, and issues. You do not own implementation
-code — that belongs to Replit Agent. Propose technical ideas inside
-plan docs and issue bodies, not as committed code files in Replit
-Agent's protected directories (server/, client/, script/).
-
-See IME.md for the spoke context and IME-AGENTS-replit.md
-for workspace boundaries.`}
+Reference implementation: https://github.com/ioTus/IME`}
               </pre>
             </CardContent>
           </Card>
@@ -1165,11 +1130,11 @@ for workspace boundaries.`}
         <Card className="bg-muted/50">
           <CardContent className="pt-5 pb-4">
             <pre className="text-xs font-mono text-muted-foreground whitespace-pre leading-relaxed" data-testid="text-architecture">
-{`  Claude Chat (claude.ai)
+{`  Compatible AI assistant
     ↕ custom MCP connector (OAuth 2.0)
   MCP Bridge Server (Replit) — multi-repo mode
     ↕ GitHub API (Octokit)
-  Any GitHub Repo (files + Issues)`}
+   GitHub repositories (files + Issues)`}
             </pre>
           </CardContent>
         </Card>

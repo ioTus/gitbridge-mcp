@@ -2,14 +2,14 @@
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A production-ready MCP (Model Context Protocol) bridge server that connects **Claude Chat** (claude.ai) to **any GitHub repository**. Claude can read files, write code, search code, batch-commit changes, and manage Issues directly from a conversation — all through a custom MCP connector using Streamable HTTP transport with OAuth 2.0 authentication.
+A production-ready MCP (Model Context Protocol) bridge server that connects **AI assistants** to GitHub repositories. Compatible clients can read files, write code, search code, batch-commit changes, and manage Issues directly from a conversation through Streamable HTTP transport with OAuth 2.0 authentication.
 
-**V2: Multi-repo mode** — no hardcoded repo. Claude passes `owner` and `repo` on every tool call. Lock Claude to a specific repo using a Claude Project system prompt (see [Project Scoping](#project-scoping) below).
+**V2: Multi-repo mode** — no hardcoded repo. Clients pass `owner` and `repo` on every tool call, while repository-owned documentation supplies durable context.
 
 ## Architecture
 
 ```
-  Claude Chat (claude.ai)
+  Compatible AI assistant
     ↕ MCP connector (Streamable HTTP + OAuth 2.0)
   MCP Bridge Server (your host) — multi-repo mode
     ↕ GitHub REST API (Octokit)
@@ -73,9 +73,11 @@ The server will **refuse to start** if any required variable is missing. All thr
 
 > **V2 note:** `GITHUB_OWNER` and `GITHUB_REPO` environment variables are no longer used. The target repository is specified per tool call via `owner` and `repo` parameters.
 
-### 5. Deploy / Run
+### 5. Verify and publish
 
-**On Replit:** Click Run. The server starts automatically.
+**On Replit:** Click **Run** to verify the temporary development preview, then
+use **Publish** to create the stable public URL required by external MCP
+clients.
 
 **Locally or on other platforms:**
 
@@ -91,7 +93,9 @@ The server will start on port 5000 (or whatever you set `PORT` to). You should s
 [MCP] MCP endpoint: /mcp
 ```
 
-### 6. Connect Claude
+### 6. Connect an AI assistant
+
+The exact labels vary by client. For example, in Claude:
 
 1. Go to **claude.ai → Settings → Integrations → Add More → Custom MCP connector**
 2. Enter your server URL: `https://your-server-url.example.com/mcp`
@@ -99,7 +103,7 @@ The server will start on port 5000 (or whatever you set `PORT` to). You should s
 4. Set **Client ID** to your `OAUTH_CLIENT_ID` value
 5. Set **Client Secret** to your `OAUTH_CLIENT_SECRET` value
 6. Set **Authorization URL** to `https://your-server-url.example.com/oauth/token`
-7. Claude will authenticate using the Client Credentials flow and discover all tools automatically
+7. The client authenticates using the Client Credentials flow and discovers all tools automatically
 
 ### 7. Start using it
 
@@ -132,7 +136,7 @@ No secrets are embedded in URLs. All authentication happens via standard HTTP he
 - Your OAuth credentials control who can connect to the MCP server
 - Your `GITHUB_PERSONAL_ACCESS_TOKEN` controls what the server can do on GitHub — the PAT's scope determines which repos Claude can access
 - Anyone with your OAuth credentials can use your GitHub PAT's permissions through the server
-- In multi-repo mode, Claude can access any repo the PAT has permissions for — use Claude Project system prompts to constrain which repo Claude targets (see [Project Scoping](#project-scoping))
+- In multi-repo mode, clients can access any repo the PAT permits. Prefer a fine-grained PAT or `ALLOWED_REPOS` to enforce repository boundaries server-side.
 - Treat all tokens and secrets as confidential — never commit them to version control
 
 ### PAT scoping best practices
@@ -191,63 +195,63 @@ messages. Production PostgreSQL uses required TLS; development uses Replit's
 local database transport. The client has a maximum two-connection pool and the
 raw-event table has one timestamp index.
 
-<!-- TOOLS:START — When adding or modifying tools, update this table AND the tables in IME.md and replit.md. Tool count: 22 -->
+<!-- TOOLS:START — generated; do not edit; run `npm run docs:tools` -->
 ### File Tools
 
 | Tool | Description |
 |------|-------------|
-| `read_files` | Read up to 20 files in order with SHAs and inline per-file errors, or set `metadata_only: true` to return only path/SHA/size without budget accounting. A 256 KiB decoded-content budget protects caller context for content reads. |
-| `session_bootstrap` | Return the root listing plus `IME.md` and up to 19 extra startup files in one envelope. Files share the 256 KiB decoded-content budget and failures remain inline; missing `IME.md` signals that the repo is not IME-initialized. |
-| `push_multiple_files` | Create or update multiple files in a single commit using the Git Data API. Supports per-file `content_encoding` for mixing text and binary files. |
-| `list_files` | List files and folders at a path in a GitHub repository |
-| `patch_multiple_files` | Apply targeted edits across multiple files in a single atomic commit. Combines the token efficiency of `patch_file` with the atomicity of `push_multiple_files`. |
+| `read_files` | Read up to 20 files in input order with SHAs and inline per-file errors. A 256 KiB decoded-content cap protects the caller's context (~70k tokens); oversized files return metadata without content. |
+| `session_bootstrap` | Bootstrap an IME session in one call: root listing plus IME.md and up to 19 extra files, with ordered inline errors and a shared 256 KiB content budget. Missing IME.md means the repo is not IME-initialized; stop and surface that state. |
+| `push_multiple_files` | Create or replace multiple files in one commit. Each file may use UTF-8 or base64. |
+| `list_files` | List files and folders at a path |
+| `patch_multiple_files` | Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete. |
 
 ### Issue Tools
 
 | Tool | Description |
 |------|-------------|
-| `create_issue` | Create a new GitHub Issue in a repository |
-| `update_issue` | Update an existing GitHub Issue (change status, labels, title, or body) |
-| `list_issues` | List GitHub Issues in a repository with optional filters |
-| `add_issue_comment` | Add a comment to an existing GitHub Issue |
-| `read_issue` | Read the full body and comments of a GitHub Issue |
+| `create_issue` | Create a GitHub issue. |
+| `update_issue` | Update a GitHub issue. |
+| `list_issues` | List repository issues with filters. |
+| `add_issue_comment` | Add a comment to an issue. |
+| `read_issue` | Read an issue and all comments. |
 
 ### Search & History
 
 | Tool | Description |
 |------|-------------|
-| `search_files` | Search file contents across a GitHub repository using GitHub Code Search |
-| `get_recent_commits` | Return recent commit history for a branch in a GitHub repository |
-| `get_file_diff` | Show file changes between a commit SHA and a branch head (default: main). Returns changed files with status and patch content. |
+| `search_files` | Search file contents with GitHub Code Search |
+| `get_recent_commits` | Return recent commits from a branch |
+| `get_file_diff` | List file changes and patches from a commit to a branch. |
+
+### Advanced File Operations
+
+| Tool | Description |
+|------|-------------|
+| `move_file` | Copy a file to a new path or name; the original remains and must be deleted separately. |
+| `delete_file` | Delete a file from the selected branch. |
+| `queue_write` | Queue a file write in memory for flush_queue to commit. Queue is lost on restart; supports UTF-8 or base64. |
+| `flush_queue` | Commit queued writes for a branch in one commit. Add files first with queue_write. |
+
+### Repo Management
+
+| Tool | Description |
+|------|-------------|
+| `create_repo` | Create a user or organization repository. |
 
 ### Branch Management
 
 | Tool | Description |
 |------|-------------|
 | `create_branch` | Create a new branch from an existing one |
-| `list_branches` | List all branches in a GitHub repository |
-
-### Advanced File Operations
-
-| Tool | Description |
-|------|-------------|
-| `move_file` | Move or rename a file. Reads from old path, writes to new path, then returns a GitHub link for the user to manually delete the original. |
-| `delete_file` | Delete a file from a GitHub repository. This is a destructive operation — the file will be permanently removed from the specified branch. |
-| `queue_write` | Queue a file write for batch commit. Supports `content_encoding: "base64"` for binary files. Writes are held in server memory and flushed together when flush_queue is called. Queue resets if the server restarts. |
-| `flush_queue` | Commit all queued writes for a repository in a single GitHub commit. Call queue_write first to add files to the queue. |
-
-### Repo Management
-
-| Tool | Description |
-|------|-------------|
-| `create_repo` | Create a new GitHub repository on a personal account or within an organization |
+| `list_branches` | List branches |
 
 ### Project Boards
 
 | Tool | Description |
 |------|-------------|
-| `get_project_board` | Read a GitHub Projects V2 board — returns columns (status values) and the issues/PRs in each column |
-| `move_issue_to_column` | Move an issue to a target column (status) on a GitHub Projects V2 board |
+| `get_project_board` | Read a Projects V2 board's Status columns and items. |
+| `move_issue_to_column` | Move a repository issue to a Projects V2 Status column. |
 <!-- TOOLS:END -->
 
 ## API Endpoints
@@ -262,216 +266,31 @@ raw-event table has one timestamp index.
 | `POST` | `/messages` | Message endpoint for legacy SSE transport |
 | `GET` | `/api/status` | Server status, tool registry, and auth status |
 
-## Project Scoping
+## Repository Context
 
-Since V2 uses multi-repo mode (no hardcoded `GITHUB_OWNER`/`GITHUB_REPO`), you should use **Claude Project system prompts** to control which repositories Claude targets. There are two approaches depending on your workflow:
+GitBridge is multi-repository: every tool call identifies its target with
+`owner` and `repo`. AI assistants should get their durable behavior from a
+maintained hub and load repository-specific context from the target repository
+rather than embedding a copy of moving rules in each client prompt.
 
-### Option A: One Project per repo (recommended)
+Minimal generic client prompt:
 
-The simplest and safest approach. Create a separate Claude Project for each repository, with a system prompt that locks Claude to that specific repo.
-
-```
-You are working exclusively in the GitHub repository:
-owner=YOUR_USERNAME repo=YOUR_REPO
-
-Pass these values on every tool call to the GitHub MCP bridge.
-Never write to any other repository regardless of what the user asks.
-If asked to work in a different repo, tell the user to switch to
-the appropriate Claude Project for that repository.
-
-## Session Startup (do this every conversation)
-
-1. Read `IME.md` at the repo root — this is the spoke bootstrap
-   with repo identity and tool reference. Follow its hub pointer
-   to `ioTus/ime` for universal rules.
-2. Read `IME-AGENTS.md` and `IME-AGENTS-replit.md` — these define the
-   multi-agent collaboration workflow.
-3. Call `list_files` to confirm connectivity.
-4. Check `IME-docs/plans/` for active plans (status: executing).
-5. Check open Issues with `list_issues`.
-6. Ask the user what they want to work on.
-
-## Critical Rules (always active, even before reading IME.md)
-
-- NEVER commit a file without showing the user the content first
-  and getting explicit approval.
-- NEVER overwrite an existing file without reading the current
-  version first.
-- NEVER delete a file without the user confirming the specific
-  file path.
-- For all other rules, defer to IME.md and IME-AGENTS.md in the repo.
-
-## Your Role
-
-You are the PM and strategist for this project. You write plans,
-specs, documentation, and issues. You do not own implementation
-code — that belongs to Replit Agent. Propose technical ideas inside
-plan docs and issue bodies, not as committed code files in Replit
-Agent's protected directories (server/, client/, script/).
-
-See IME.md for the spoke context and IME-AGENTS-replit.md
-for workspace boundaries.
-
-## Connection Failure Protocol
-
-This lives here — not on the server — because when the bridge
-is down, server-side instructions are unreachable.
-
-### Degraded Mode (activate immediately on failure)
-
-When any MCP tool call fails:
-
-1. Announce: "Bridge is down. Switching to degraded mode —
-   all work will be staged here and pushed when it's back."
-2. Draft all files/issues exactly as they'd appear in the repo.
-   Tag each with file path + commit message, or issue title + labels.
-3. Maintain a queue manifest:
-   | # | Type | Path / Title | Status |
-   |---|------|-------------|--------|
-4. Silent-retry bridge ONCE per new user message.
-5. Continue working. Zero productivity loss.
-
-Never skip approval. Never spam retries. Never lose the queue.
-
-### Diagnose (on request, or if user wants to troubleshoot)
-
-If the user asks why the bridge is down or wants to fix it:
-1. Classify: auth error (handshake/PAT), timeout (server asleep),
-   connection refused (server down/URL wrong), 403 (PAT scopes),
-   404 (bad path/repo), rate limit (wait/retry)
-2. Try `list_files` to confirm systemic vs. isolated failure
-3. Report: what failed, what it means, ONE recommended fix
-   tailored to user's environment. Never a generic list.
-4. Ask desktop or mobile BEFORE prescribing recovery steps.
-   - Desktop: remove/re-add connector in Settings → Connectors.
-     Check deployment is awake. Verify PAT not expired.
-   - Mobile: try claude.ai in mobile browser with "request
-     desktop site" to access Connectors. If inaccessible →
-     stay in degraded mode until desktop available.
-   - Either: visit server URL in browser to confirm it responds.
-
-### Reconnection (exiting degraded mode)
-
-When any MCP call succeeds after a period of degraded mode:
-1. Announce: "Bridge is back online."
-2. Display the full queue manifest.
-3. Get single user approval to push everything.
-4. Execute: files via push_multiple_files, issues via create_issue.
-5. Confirm each item pushed successfully.
-6. Clear the queue. Resume normal operations.
+```text
+Use the GitHub repository hub declared by this project.
+Read IME.md at the repository root and follow its maintained pointers.
+Use session_bootstrap for startup context.
 ```
 
-This approach is recommended for most users. Each project has clear boundaries, and there's no risk of cross-repo mistakes.
-
-### Option B: One Project, multiple repos (advanced)
-
-For power users who work across multiple repos in a single conversation. The system prompt defines Claude's role but doesn't lock to a specific repo. Instead, each repo self-documents through an `IME.md` file at its root.
-
-```
-You are a developer assistant with access to GitHub repositories via
-the MCP bridge. You can work across multiple repos in a single session.
-
-Before performing any operation on a repo, read its IME.md file
-(if it exists) to pick up project-specific rules and context:
-  call read_files with owner=OWNER repo=REPO paths=["IME.md"]
-
-Always confirm the target owner/repo before any write operation.
-When switching between repos, announce the switch clearly.
-
-## Session Startup (do this every conversation)
-
-1. Ask the user which repo(s) they want to work with.
-2. Read `IME.md` from each target repo — this is the spoke bootstrap
-   with repo identity and hub pointer. Follow the hub pointer for
-   universal rules.
-3. Read `IME-AGENTS.md` and `IME-AGENTS-replit.md` from each target repo
-   (if they exist) for multi-agent collaboration context.
-4. Call `list_files` on each repo to confirm connectivity.
-5. Check `IME-docs/plans/` for active plans (status: executing).
-6. Check open Issues with `list_issues`.
-7. Ask the user what they want to work on.
-
-## Critical Rules (always active, even before reading IME.md)
-
-- NEVER commit a file without showing the user the content first
-  and getting explicit approval.
-- NEVER overwrite an existing file without reading the current
-  version first.
-- NEVER delete a file without the user confirming the specific
-  file path.
-- For all other rules, defer to IME.md and IME-AGENTS.md in each repo.
-
-## Your Role
-
-You are the PM and strategist for these projects. You write plans,
-specs, documentation, and issues. You do not own implementation
-code — that belongs to Replit Agent. Propose technical ideas inside
-plan docs and issue bodies, not as committed code files in Replit
-Agent's protected directories (server/, client/, script/).
-
-See IME.md in each repo for the spoke context and
-IME-AGENTS-replit.md for workspace boundaries.
-
-## Connection Failure Protocol
-
-This lives here — not on the server — because when the bridge
-is down, server-side instructions are unreachable.
-
-### Degraded Mode (activate immediately on failure)
-
-When any MCP tool call fails:
-
-1. Announce: "Bridge is down. Switching to degraded mode —
-   all work will be staged here and pushed when it's back."
-2. Draft all files/issues exactly as they'd appear in the repo.
-   Tag each with file path + commit message, or issue title + labels.
-3. Maintain a queue manifest:
-   | # | Type | Path / Title | Status |
-   |---|------|-------------|--------|
-4. Silent-retry bridge ONCE per new user message.
-5. Continue working. Zero productivity loss.
-
-Never skip approval. Never spam retries. Never lose the queue.
-
-### Diagnose (on request, or if user wants to troubleshoot)
-
-If the user asks why the bridge is down or wants to fix it:
-1. Classify: auth error (handshake/PAT), timeout (server asleep),
-   connection refused (server down/URL wrong), 403 (PAT scopes),
-   404 (bad path/repo), rate limit (wait/retry)
-2. Try `list_files` to confirm systemic vs. isolated failure
-3. Report: what failed, what it means, ONE recommended fix
-   tailored to user's environment. Never a generic list.
-4. Ask desktop or mobile BEFORE prescribing recovery steps.
-   - Desktop: remove/re-add connector in Settings → Connectors.
-     Check deployment is awake. Verify PAT not expired.
-   - Mobile: try claude.ai in mobile browser with "request
-     desktop site" to access Connectors. If inaccessible →
-     stay in degraded mode until desktop available.
-   - Either: visit server URL in browser to confirm it responds.
-
-### Reconnection (exiting degraded mode)
-
-When any MCP call succeeds after a period of degraded mode:
-1. Announce: "Bridge is back online."
-2. Display the full queue manifest.
-3. Get single user approval to push everything.
-4. Execute: files via push_multiple_files, issues via create_issue.
-5. Confirm each item pushed successfully.
-6. Clear the queue. Resume normal operations.
-```
-
-This approach requires more discipline but enables cross-repo workflows (e.g.,
-coordinating changes across a frontend and backend repo). Verify the target
-from the explicit `owner` and `repo` on every call; compact responses preserve
-the identifiers needed to follow writes and commits without an emoji/banner
-prefix.
+The [IME reference implementation](https://github.com/ioTus/IME) documents the
+hub/spoke model, its stamped System Core, and the one-line project `_config.md`
+pointer. Repositories that do not use IME can provide their own root
+documentation and client instructions.
 
 ## Dashboard
 
 The server includes a web dashboard at the root URL. Unauthenticated visitors see only the server name, version, and status. Sign in with your OAuth credentials (`OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET`) to view:
 
-- Connection details for setting up Claude's custom MCP connector
+- Connection details for setting up a compatible AI assistant
 - Active MCP sessions
 - Full tool registry with phase indicators
 - Architecture diagram and setup instructions
