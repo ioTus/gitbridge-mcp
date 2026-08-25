@@ -1121,7 +1121,7 @@ export default function Home() {
 Read IME.md at the repository root and follow its maintained pointers.
 Use session_bootstrap for startup context.
 
-Reference implementation: https://github.com/ioTus/IME`}
+Reference implementation: https://github.com/ioTus/openIME`}
               </pre>
             </CardContent>
           </Card>

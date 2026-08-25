@@ -281,7 +281,7 @@ Read IME.md at the repository root and follow its maintained pointers.
 Use session_bootstrap for startup context.
 ```
 
-The [IME reference implementation](https://github.com/ioTus/IME) documents the
+The [IME reference implementation](https://github.com/ioTus/openIME) documents the
 hub/spoke model, its stamped System Core, and the one-line project `_config.md`
 pointer. Repositories that do not use IME can provide their own root
 documentation and client instructions.
