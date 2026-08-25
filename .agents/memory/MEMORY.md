@@ -1,1 +1,2 @@
 - [Analytics database TLS](analytics-db-tls.md) — production PostgreSQL requires TLS, while Replit's local development database rejects SSL.
+- [GitBridge positioning](gitbridge-positioning.md) — lead with a generic AI-to-GitHub bridge while preserving first-class, deliberately opinionated IME support.
