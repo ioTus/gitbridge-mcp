@@ -29,7 +29,7 @@
 
 import { execSync } from "child_process";
 import { readFileSync, existsSync, realpathSync } from "fs";
-import { resolve } from "path";
+import { basename, resolve } from "path";
 
 export const SYNC_UTILITY_VERSION = "2.1.1";
 
@@ -637,8 +637,8 @@ export async function commentOnIssue(
 }
 
 if (
-  process.argv[1]?.endsWith("github-sync.ts") ||
-  process.argv[1]?.endsWith("github-sync.js")
+  process.argv[1] &&
+  ["github-sync.ts", "github-sync.js"].includes(basename(process.argv[1]))
 ) {
   const subcommand = process.argv[2];
 
