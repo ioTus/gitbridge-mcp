@@ -6,7 +6,7 @@
  * GitHub Git Data API calls.
  *
  * ---------------------------------------------------------------------
- * SYNC_UTILITY_VERSION: 2.1.0
+ * SYNC_UTILITY_VERSION: 2.1.1
  *
  * Lineage:
  *   1.0.0  ioTus/gitbridge-mcp — original. Additions only, no deletion
@@ -18,18 +18,20 @@
  *   2.1.0  ioTus/eatezy (2026-08-19) — version stamping, explicit
  *          repo-root invariant, bulk-deletion sanity check, and error
  *          paths that report the files they failed on.
+ *   2.1.1  ioTus/gitbridge-mcp (2026-09-05) — manifest fetch no longer
+ *          fails open, and the repo-root check verifies git's toplevel.
+ *          Both defects were found during the v2.1.0 rollout here.
  *
- * Backport of 2.1.0 to the canonical source is tracked on
- * ioTus/gitbridge-mcp. Do not fork this file further without recording
- * the change there.
+ * This canonical source now holds the newest version. Do not fork this
+ * file further without recording the change in ioTus/gitbridge-mcp.
  * ---------------------------------------------------------------------
  */
 
 import { execSync } from "child_process";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, realpathSync } from "fs";
 import { resolve } from "path";
 
-export const SYNC_UTILITY_VERSION = "2.1.0";
+export const SYNC_UTILITY_VERSION = "2.1.1";
 
 const MANIFEST_PATH = ".replit-sync-manifest.json";
 const CONFIG_PATH = "ime.config.json";
@@ -71,7 +73,46 @@ interface SyncResult {
  * silently remove it. This states the invariant directly so it survives
  * refactors of unrelated code.
  */
-function assertRepoRoot(): void {
+function normalizedRealPath(path: string): string {
+  try {
+    return realpathSync(resolve(path));
+  } catch {
+    return resolve(path);
+  }
+}
+
+export function assertRepoRoot(): void {
+  const cwd = normalizedRealPath(process.cwd());
+
+  try {
+    const gitRoot = normalizedRealPath(
+      execSync("git rev-parse --show-toplevel", {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim(),
+    );
+
+    if (cwd !== gitRoot) {
+      throw new Error(
+        `Refusing to sync outside the repository root.\n` +
+          `Working directory: ${cwd}\n` +
+          `Git repository root: ${gitRoot}\n` +
+          `Run this utility from the repository root — deletion detection ` +
+          `resolves manifest paths against the current working directory.`,
+      );
+    }
+    return;
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.startsWith("Refusing to sync outside")
+    ) {
+      throw err;
+    }
+    // Git may be unavailable or this may not be a work tree. Preserve the
+    // utility's existing config-presence fallback for those environments.
+  }
+
   if (!existsSync(resolve(process.cwd(), CONFIG_PATH))) {
     throw new Error(
       `${CONFIG_PATH} not found in ${process.cwd()}.\n` +
@@ -79,6 +120,16 @@ function assertRepoRoot(): void {
         `resolves manifest paths against the current working directory, ` +
         `so running elsewhere is unsafe.`,
     );
+  }
+}
+
+export class GitHubApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
+    super(message);
+    this.name = "GitHubApiError";
   }
 }
 
@@ -115,8 +166,9 @@ async function githubApi(
   });
   const data = await resp.json();
   if (!resp.ok) {
-    throw new Error(
+    throw new GitHubApiError(
       `GitHub API ${resp.status}: ${data.message || JSON.stringify(data)} (${endpoint})`,
+      resp.status,
     );
   }
   return data;
@@ -156,8 +208,11 @@ async function githubApiWithConnectors(
       : {}),
   });
   const data = await resp.json();
-  if (data.message && !data.sha && !data.login) {
-    throw new Error(`GitHub API error: ${data.message} (${endpoint})`);
+  if (!resp.ok) {
+    throw new GitHubApiError(
+      `GitHub API ${resp.status}: ${data.message || JSON.stringify(data)} (${endpoint})`,
+      resp.status,
+    );
   }
   return data;
 }
@@ -175,23 +230,56 @@ async function api(
   return githubApi(token, endpoint, options);
 }
 
-async function loadManifest(
+type ApiClient = (
+  token: string,
+  endpoint: string,
+  options?: { method?: string; body?: any },
+) => Promise<any>;
+
+export async function loadManifest(
   token: string,
   config: IMEConfig,
   branch: string,
+  apiClient: ApiClient = api,
 ): Promise<Manifest> {
+  const endpoint =
+    `/repos/${config.owner}/${config.repo}/contents/${MANIFEST_PATH}?ref=${branch}`;
+  let data: any;
+
   try {
-    const data = await api(
-      token,
-      `/repos/${config.owner}/${config.repo}/contents/${MANIFEST_PATH}?ref=${branch}`,
+    data = await apiClient(token, endpoint);
+  } catch (err) {
+    if (err instanceof GitHubApiError && err.status === 404) {
+      return { pushedPaths: [] };
+    }
+    throw new Error(
+      `Unable to load ${MANIFEST_PATH}; sync aborted without pushing: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
+  }
+
+  if (typeof data?.content !== "string") {
+    throw new Error(
+      `Invalid ${MANIFEST_PATH}: GitHub response did not contain base64 content. ` +
+        `Sync aborted without pushing.`,
+    );
+  }
+
+  try {
     const content = Buffer.from(data.content, "base64").toString("utf-8");
     const parsed = JSON.parse(content);
-    if (Array.isArray(parsed.pushedPaths)) {
-      return parsed as Manifest;
+    if (!Array.isArray(parsed?.pushedPaths)) {
+      throw new Error("'pushedPaths' must be an array");
     }
-  } catch {}
-  return { pushedPaths: [] };
+    return { pushedPaths: parsed.pushedPaths };
+  } catch (err) {
+    throw new Error(
+      `Invalid ${MANIFEST_PATH}; sync aborted without pushing: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
 }
 
 /**

@@ -1,6 +1,8 @@
 {
   "pushedPaths": [
     ".replit-sync-manifest.json",
-    "scripts/github-sync.ts"
+    "package.json",
+    "scripts/github-sync.ts",
+    "scripts/test-github-sync.ts"
   ]
 }
