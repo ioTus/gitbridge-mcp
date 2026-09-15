@@ -1,8 +1,14 @@
 {
   "pushedPaths": [
     ".replit-sync-manifest.json",
+    "IME.md",
+    "README.md",
     "package.json",
+    "replit.md",
     "scripts/github-sync.ts",
-    "scripts/test-github-sync.ts"
+    "scripts/test-github-sync.ts",
+    "scripts/test-read-files.ts",
+    "server/lib/tool-log-redaction.ts",
+    "server/tools/read_files.ts"
   ]
 }

@@ -45,7 +45,7 @@ If a user reports "GitBridge tools stopped working" / "the connector is broken" 
 
 | Tool | Category | What it does |
 |------|----------|-------------|
-| `read_files` | File Tools | Read up to 20 files in input order with SHAs and inline per-file errors. A 256 KiB decoded-content cap protects the caller's context (~70k tokens); oversized files return metadata without content. |
+| `read_files` | File Tools | Read up to 20 files in input order with SHAs and inline per-file errors. A 256 KiB decoded-content cap protects the caller's context (~70k tokens); oversized files can be read in single-file byte ranges with offset_bytes and max_bytes. |
 | `session_bootstrap` | File Tools | Bootstrap an IME session in one call: root listing plus IME.md and up to 19 extra files, with ordered inline errors and a shared 256 KiB content budget. Missing IME.md means the repo is not IME-initialized; stop and surface that state. |
 | `push_multiple_files` | File Tools | Create or replace multiple files in one commit. Each file may use UTF-8 or base64. |
 | `list_files` | File Tools | List files and folders at a path |

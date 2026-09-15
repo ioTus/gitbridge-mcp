@@ -34,6 +34,8 @@ export const TOOL_ALLOW_LISTS: Record<string, ToolAllowList> = {
       "branch",
       "content_encoding",
       "metadata_only",
+      "offset_bytes",
+      "max_bytes",
     ],
     digest: [],
   },
