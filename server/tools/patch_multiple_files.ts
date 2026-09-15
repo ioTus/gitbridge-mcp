@@ -3,7 +3,8 @@ import { octokit, validateOwnerRepo, ownerRepoParams, logToolCall } from "../lib
 export const patchMultipleFilesSchema = {
   name: "patch_multiple_files",
   category: "file",
-  description: "Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete.",
+  description:
+    "Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete. insert_after and insert_before splice content at the exact match boundary; insertions do not add or remove newlines, so include every desired newline in content.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -29,23 +30,26 @@ export const patchMultipleFilesSchema = {
                   type: {
                     type: "string",
                     enum: ["replace", "insert_after", "insert_before", "delete"],
-                    description: "Operation type",
+                    description:
+                      "Operation type. insert_after splices at match.index + match.length and insert_before splices at match.index; neither adjusts line boundaries or adds/removes newlines.",
                   },
                   old: {
                     type: "string",
-                    description: "Unique exact text for replace.",
+                    description: "Unique exact text to replace.",
                   },
                   new: {
                     type: "string",
-                    description: "Replacement text.",
+                    description: "Replacement text, used exactly as supplied.",
                   },
                   match: {
                     type: "string",
-                    description: "Unique exact text for insert or delete.",
+                    description:
+                      "Unique exact text to locate for insert or delete. For insertion, this is the exact boundary: after uses the match end and before uses the match start.",
                   },
                   content: {
                     type: "string",
-                    description: "Text for insert operations.",
+                    description:
+                      "Exact text for insert operations. It is spliced without adding or removing anything; include every desired LF or CRLF newline yourself. lines_added reports the literal LF (U+000A) count in content.",
                   },
                 },
                 required: ["type"],
@@ -132,7 +136,7 @@ function findMatch(
   return { index: first, line };
 }
 
-function applyOperations(
+export function applyOperations(
   originalContent: string,
   operations: PatchOperation[],
   filePath: string
@@ -163,16 +167,12 @@ function applyOperations(
         if ("error" in result) return result;
 
         const matchEnd = result.index + op.match!.length;
-        const lineEnd = content.indexOf("\n", matchEnd);
-        const insertPos = lineEnd === -1 ? content.length : lineEnd;
-        const insertion = "\n" + op.content!;
-
         content =
-          content.substring(0, insertPos) +
-          insertion +
-          content.substring(insertPos);
+          content.substring(0, matchEnd) +
+          op.content! +
+          content.substring(matchEnd);
 
-        const linesAdded = op.content!.split("\n").length;
+        const linesAdded = (op.content!.match(/\n/g) ?? []).length;
         summary.push({ type: "insert_after", line: result.line, lines_added: linesAdded });
         break;
       }
@@ -180,15 +180,12 @@ function applyOperations(
         const result = findMatch(content, op.match!, i, "insert_before", filePath);
         if ("error" in result) return result;
 
-        const lineStart = content.lastIndexOf("\n", result.index - 1) + 1;
-        const insertion = op.content! + "\n";
-
         content =
-          content.substring(0, lineStart) +
-          insertion +
-          content.substring(lineStart);
+          content.substring(0, result.index) +
+          op.content! +
+          content.substring(result.index);
 
-        const linesAdded = op.content!.split("\n").length;
+        const linesAdded = (op.content!.match(/\n/g) ?? []).length;
         summary.push({ type: "insert_before", line: result.line, lines_added: linesAdded });
         break;
       }

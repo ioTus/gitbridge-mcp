@@ -7,8 +7,10 @@
     "replit.md",
     "scripts/github-sync.ts",
     "scripts/test-github-sync.ts",
+    "scripts/test-patch-multiple-files.ts",
     "scripts/test-read-files.ts",
     "server/lib/tool-log-redaction.ts",
+    "server/tools/patch_multiple_files.ts",
     "server/tools/read_files.ts"
   ]
 }
