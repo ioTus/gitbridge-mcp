@@ -4,7 +4,7 @@ export const patchMultipleFilesSchema = {
   name: "patch_multiple_files",
   category: "file",
   description:
-    "Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete. insert_after and insert_before splice content at the exact match boundary; insertions do not add or remove newlines, so include every desired newline in content.",
+    "Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete. Inserts splice exact content at the match boundary; delete removes only the exact match. No implicit newline adjustments; include desired newlines explicitly.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -31,7 +31,7 @@ export const patchMultipleFilesSchema = {
                     type: "string",
                     enum: ["replace", "insert_after", "insert_before", "delete"],
                     description:
-                      "Operation type. insert_after splices at match.index + match.length and insert_before splices at match.index; neither adjusts line boundaries or adds/removes newlines.",
+                      "Operation type. insert_after splices at match.index + match.length and insert_before at match.index. delete removes exactly match; none expands to line boundaries.",
                   },
                   old: {
                     type: "string",
@@ -44,7 +44,7 @@ export const patchMultipleFilesSchema = {
                   match: {
                     type: "string",
                     description:
-                      "Unique exact text to locate for insert or delete. For insertion, this is the exact boundary: after uses the match end and before uses the match start.",
+                      "Unique exact text to locate for insert or delete. Inserts use the match end/start. Delete removes only this text, including only supplied newlines; lines_removed counts literal LF (U+000A) characters in match.",
                   },
                   content: {
                     type: "string",
@@ -193,14 +193,11 @@ export function applyOperations(
         const result = findMatch(content, op.match!, i, "delete", filePath);
         if ("error" in result) return result;
 
-        const linesRemoved = op.match!.split("\n").length;
-        const lineStart = content.lastIndexOf("\n", result.index - 1) + 1;
-        const matchEndOffset = result.index + op.match!.length;
-        const lineEnd = content.indexOf("\n", matchEndOffset);
-        const deleteEnd = lineEnd === -1 ? content.length : lineEnd + 1;
+        const linesRemoved = (op.match!.match(/\n/g) ?? []).length;
 
         content =
-          content.substring(0, lineStart) + content.substring(deleteEnd);
+          content.substring(0, result.index) +
+          content.substring(result.index + op.match!.length);
 
         summary.push({ type: "delete", line: result.line, lines_removed: linesRemoved });
         break;

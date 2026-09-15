@@ -66,5 +66,5 @@ If a user reports "GitBridge tools stopped working" / "the connector is broken" 
 | `get_file_diff` | Search & History | List file changes and patches from a commit to a branch. |
 | `get_project_board` | Project Boards | Read a Projects V2 board's Status columns and items. |
 | `move_issue_to_column` | Project Boards | Move a repository issue to a Projects V2 Status column. |
-| `patch_multiple_files` | File Tools | Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete. insert_after and insert_before splice content at the exact match boundary; insertions do not add or remove newlines, so include every desired newline in content. |
+| `patch_multiple_files` | File Tools | Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete. Inserts splice exact content at the match boundary; delete removes only the exact match. No implicit newline adjustments; include desired newlines explicitly. |
 <!-- TOOLS:END -->

@@ -90,7 +90,7 @@ assert.deepEqual(sequential.summary, [
   { type: "insert_before", line: 2, lines_added: 0 },
 ]);
 
-// Existing replace and whole-line delete behavior remains unchanged.
+// Replace remains unchanged; delete now removes only the supplied match.
 const replace = apply("keep\nold\nkeep\n", [
   { type: "replace", old: "old", new: "new" },
 ]);
@@ -99,9 +99,32 @@ assert.equal(replace.content, "keep\nnew\nkeep\n");
 const deletion = apply("keep\nremove\nkeep\n", [
   { type: "delete", match: "remove" },
 ]);
-assert.equal(deletion.content, "keep\nkeep\n");
+assert.equal(deletion.content, "keep\n\nkeep\n");
 assert.deepEqual(deletion.summary, [
-  { type: "delete", line: 2, lines_removed: 1 },
+  { type: "delete", line: 2, lines_removed: 0 },
 ]);
+
+for (const [source, match, expected, count] of [
+  ["heading\nparagraph\n\nqueue note\nrest\n", "paragraph\n\n", "heading\nqueue note\nrest\n", 2],
+  ["first\nlast\n", "last\n", "first\n", 1],
+  ["first\nlast", "last", "first\n", 0],
+  ["leftTARGETright\n", "TARGET", "leftright\n", 0],
+  ["α\r\n😀\r\nβ\r\n", "😀\r\n", "α\r\nβ\r\n", 1],
+  ["a\rb", "\r", "ab", 0],
+  ["whole\n\n", "whole\n\n", "", 2],
+] as const) {
+  const result = apply(source, [{ type: "delete", match }]);
+  assert.equal(result.content, expected);
+  assert.equal(result.summary[0].lines_removed, count);
+}
+
+const deleteSequence = apply("leftREMOVEright\n", [
+  { type: "delete", match: "REMOVE" },
+  { type: "replace", old: "leftright", new: "joined" },
+]);
+assert.equal(deleteSequence.content, "joined\n");
+for (const [source, match] of [["abc", "missing"], ["abcabc", "abc"]]) {
+  assert.ok("error" in applyOperations(source, [{ type: "delete", match }], "test.txt"));
+}
 
 console.log("patch_multiple_files tests passed");

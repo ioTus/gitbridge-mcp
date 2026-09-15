@@ -204,7 +204,7 @@ raw-event table has one timestamp index.
 | `session_bootstrap` | Bootstrap an IME session in one call: root listing plus IME.md and up to 19 extra files, with ordered inline errors and a shared 256 KiB content budget. Missing IME.md means the repo is not IME-initialized; stop and surface that state. |
 | `push_multiple_files` | Create or replace multiple files in one commit. Each file may use UTF-8 or base64. |
 | `list_files` | List files and folders at a path |
-| `patch_multiple_files` | Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete. insert_after and insert_before splice content at the exact match boundary; insertions do not add or remove newlines, so include every desired newline in content. |
+| `patch_multiple_files` | Atomically apply ordered edits across files in one commit. Supports replace, insert_after, insert_before, and delete. Inserts splice exact content at the match boundary; delete removes only the exact match. No implicit newline adjustments; include desired newlines explicitly. |
 
 ### Issue Tools
 
